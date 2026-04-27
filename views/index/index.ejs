@@ -1,0 +1,31 @@
+﻿<h1>Eu sou a página index!</h1>
+
+<p>Oi, <%= usuario %>! 😅</p>
+
+<p>
+	<img src="/public/images/emoji.png" alt="Emoji 😊" />
+</p>
+
+<% for (let contador = 0; contador < quantidadeDeRepeticoes; contador++) { %>
+
+	<h2>😱</h2>
+
+	<p>O que é isso?!?!</p>
+
+<% } %>
+
+<%- include("exemplo-include") %>
+
+<p>Tchau, <%= usuario %>!</p>
+
+<%- contentFor("espaco-head") %>
+
+<style type="text/css">
+	body {
+		color: blue;
+	}
+</style>
+
+<%- contentFor("espaco-barra") %>
+
+<i>Estou na barra! 😊</i>

@@ -24,21 +24,21 @@ CREATE TABLE odor (
 
 -- Query de consolidação por dia da semana (1 = domingo, 2 = segunda...) e por hora, para o heatmap com 7 colunas e 24 linhas
 select dayofweek(data) dia_semana, extract(hour from data) hora, max(h2s) h2s, max(umidade) umidade, max(nh3) nh3, max(temperatura) temperatura
-from passagem
+from odor
 where data between '2025-03-03 00:00:00' and '2025-03-14 23:59:59'
 and id_sensor = 2
 group by dia_semana, hora;
 
 -- Query de consolidação por dia do mês e por hora, para o heatmap de visão explodida por dia do mês com N colunas e 24 linhas
 select date_format(date(data), '%d/%m/%Y') dia, extract(hour from data) hora, max(h2s) h2s, max(umidade) umidade, max(nh3) nh3, max(temperatura) temperatura
-from passagem
+from odor
 where data between '2025-03-03 00:00:00' and '2025-03-14 23:59:59'
 and id_sensor = 2
 group by dia, hora;
 
 -- Query de consolidação por dia do mês, para o gráfico por dia do mês
 select date_format(date(data), '%d/%m/%Y') dia, max(h2s) h2s, max(umidade) umidade, max(nh3) nh3, max(temperatura) temperatura
-from passagem
+from odor
 where data between '2025-03-03 00:00:00' and '2025-03-14 23:59:59'
 and id_sensor = 2
 group by dia;
