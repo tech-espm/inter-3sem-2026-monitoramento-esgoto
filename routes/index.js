@@ -89,4 +89,6 @@ router.get("/produtos", wrap(async (req, res) => {
 	res.render("index/produtos", opcoes);
 }));
 
+
+
 module.exports = router;
