@@ -2,25 +2,25 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="pt-br">
 <head>
 	<%- include("comum/cabecalho") %>
-
 	<%- defineContent("espaco-head") %>
 </head>
 <body>
+	<header class="site-header">
+		<a href="/" class="logo">SewerWatch</a>
+		<nav class="site-nav">
+			<a href="/">Início</a>
+			<a href="/dashboard">Dashboard</a>
+			<a href="/sensores">Sensores</a>
+			<a href="/niveis">Níveis</a>
+			<a href="/alertas">Alertas</a>
+		</nav>
+		<span class="status-badge">Sistema ativo</span>
+	</header>
 
-	<header style="display: flex; justify-content: space-between; align-items: center; padding: 20px; background: #1e293b; border-bottom: 1px solid #334155;">
-    <div style="font-weight: bold; color: #38bdf8; font-size: 1.5rem;">SewerWatch</div>
-    
-    <nav style="display: flex; gap: 20px;">
-        <a href="/" style="color: #f1f5f9; text-decoration: none; font-weight: 500;">Home</a>
-        <a href="/dashboard" style="color: #f1f5f9; text-decoration: none; font-weight: 500;">Dashboard</a>
-    </nav>
-
-    <div style="color: #4ade80; font-size: 0.9rem;">SISTEMA ATIVO 🟢</div>
-</header>
-
-	<%- body %>
+	<main class="main-content">
+		<%- body %>
+	</main>
 
 	<%- include("comum/rodape") %>
-
 </body>
 </html>

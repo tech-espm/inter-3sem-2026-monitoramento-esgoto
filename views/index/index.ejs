@@ -1,31 +1,66 @@
-﻿<h1>Eu sou a página index!</h1>
+﻿<div class="container hero">
+	<h1>Monitoramento de Esgoto</h1>
+	<p>Bem-vindo, <%= usuario %>! Visão geral do sistema SewerWatch.</p>
+	<% if (typeof sincronizados !== "undefined" && sincronizados > 0) { %>
+		<p class="msg-ok"><%= sincronizados %> nova(s) leitura(s) de odor sincronizada(s) da API.</p>
+	<% } %>
+</div>
 
-<p>Oi, <%= usuario %>! 😅</p>
+<div class="grid-4">
+	<div class="card stat-card">
+		<div class="stat-value"><%= resumo.sensoresAtivos %></motion>
+		<div class="stat-label">Sensores ativos</div>
+	</div>
+	<div class="card stat-card">
+		<div class="stat-value"><%= resumo.alertasAbertos %></div>
+		<div class="stat-label">Alertas abertos</motion>
+	</div>
+	<div class="card stat-card">
+		<div class="stat-value">
+			<% if (resumo.ultimoNivel) { %>
+				<%= parseFloat(resumo.ultimoNivel.nivel_percentual).toFixed(1) %>%
+			<% } else { %>—<% } %>
+		</div>
+		<div class="stat-label">Último nível (<%= resumo.ultimoNivel ? resumo.ultimoNivel.codigo : "—" %>)</div>
+	</div>
+	<div class="card stat-card">
+		<div class="stat-value">
+			<% if (resumo.ultimoOdor.length) { %>
+				<%= parseFloat(resumo.ultimoOdor[0].h2s).toFixed(3) %>
+			<% } else { %>—<% } %>
+		</div>
+		<div class="stat-label">H₂S mais recente (ppm)</div>
+	</div>
+</div>
 
-<p>
-	<img src="/public/images/emoji.png" alt="Emoji 😊" />
-</p>
-
-<% for (let contador = 0; contador < quantidadeDeRepeticoes; contador++) { %>
-
-	<h2>😱</h2>
-
-	<p>O que é isso?!?!</p>
-
-<% } %>
+<div class="grid-2" style="margin-top: 20px;">
+	<div class="card">
+		<h3>Acesso rápido</h3>
+		<p><a class="btn btn-primary" href="/dashboard">Abrir Dashboard</a></p>
+		<p><a class="btn btn-secondary" href="/sensores">Gerenciar Sensores</a></p>
+		<p><a class="btn btn-secondary" href="/niveis">Registrar Níveis</a></p>
+		<p><a class="btn btn-secondary" href="/alertas">Ver Alertas</a></p>
+	</div>
+	<div class="card">
+		<h3>Últimas leituras de odor</h3>
+		<% if (!resumo.ultimoOdor.length) { %>
+			<p style="color: var(--text-muted);">Nenhuma leitura no banco. Execute o script SQL e acesse o dashboard para sincronizar.</p>
+		<% } else { %>
+			<table class="table">
+				<thead><tr><th>Sensor</th><th>H₂S</th><th>Bateria</th><th>Data</th></tr></thead>
+				<tbody>
+				<% for (let i = 0; i < resumo.ultimoOdor.length; i++) { %>
+					<tr>
+						<td>odor<%= String(resumo.ultimoOdor[i].id_sensor).padStart(2, "0") %></td>
+						<td><%= parseFloat(resumo.ultimoOdor[i].h2s).toFixed(3) %> ppm</td>
+						<td><%= resumo.ultimoOdor[i].bateria %>%</td>
+						<td><%= new Date(resumo.ultimoOdor[i].data).toLocaleString("pt-BR") %></td>
+					</tr>
+				<% } %>
+				</tbody>
+			</table>
+		<% } %>
+	</div>
+</div>
 
 <%- include("exemplo-include") %>
-
-<p>Tchau, <%= usuario %>!</p>
-
-<%- contentFor("espaco-head") %>
-
-<style type="text/css">
-	body {
-		color: blue;
-	}
-</style>
-
-<%- contentFor("espaco-barra") %>
-
-<i>Estou na barra! 😊</i>
