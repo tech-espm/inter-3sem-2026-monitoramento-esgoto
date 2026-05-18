@@ -22,6 +22,7 @@ const path = require("path");
 const wrap = require("express-async-error-wrapper");
 const cookieParser = require("cookie-parser"); // https://stackoverflow.com/a/16209531/3569421
 const sql = require("./data/sql");
+const { ensureSchema } = require("./data/init-db");
 
 require("dotenv").config({ encoding: "utf8" });
 
@@ -119,9 +120,12 @@ app.use("/exemplo", require("./routes/exemplo"));
 //
 // Registra os tratadores de erro
 app.use((err, req, res, next) => {
+	console.error(err);
 	res.status(err.status || 500);
-
-	res.render("erro", { mensagem: err.message });
+	res.render("erro", {
+		titulo: "Erro",
+		mensagem: err.message || "Ocorreu um erro inesperado."
+	});
 });
 
 sql.init({
@@ -138,6 +142,16 @@ sql.init({
 const ip = process.env.IP || "127.0.0.1";
 const porta = parseInt(process.env.PORT) || 3000;
 
-const server = app.listen(porta, ip, () => {
-	console.log(`Servidor Express executando em ${ip}:${porta}`);
-});
+function iniciarServidor() {
+	app.listen(porta, ip, () => {
+		console.log(`Servidor Express executando em http://${ip}:${porta}`);
+	});
+}
+
+ensureSchema()
+	.then(iniciarServidor)
+	.catch((err) => {
+		console.error("Aviso: banco não inicializado —", err.message);
+		console.error("Confira MySQL, .env e execute: mysql -u root -p < script.sql");
+		iniciarServidor();
+	});

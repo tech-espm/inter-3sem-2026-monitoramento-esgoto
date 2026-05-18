@@ -1,3 +1,58 @@
-<p>Eu sou a página de <b>teste 2</b></p>
+<div class="page-header">
+	<h1>Níveis de esgoto</h1>
+</div>
 
-<p><i>Fim do conteúdo 2!</i></p>
+<% if (mensagem) { %><p class="msg-ok"><%= mensagem %></p><% } %>
+<% if (erro) { %><p class="msg-erro"><%= erro %></p><% } %>
+
+<div class="grid-2">
+	<div class="card">
+		<h3>Registrar leitura</h3>
+		<form method="post" action="/niveis">
+			<div class="form-group">
+				<label for="id_sensor">Sensor</label>
+				<select class="form-control" id="id_sensor" name="id_sensor" required>
+					<option value="">Selecione...</option>
+					<% for (var i = 0; i < (sensores || []).length; i++) { %>
+						<option value="<%= sensores[i].id %>"><%= sensores[i].codigo %> — <%= sensores[i].nome %></option>
+					<% } %>
+				</select>
+			</div>
+			<div class="form-group">
+				<label for="nivel_percentual">Nível (%)</label>
+				<input class="form-control" type="number" step="0.1" min="0" max="100" id="nivel_percentual" name="nivel_percentual" placeholder="Para sensores de nível" />
+			</div>
+			<div class="form-group">
+				<label for="vazao">Vazão (L/s)</label>
+				<input class="form-control" type="number" step="0.1" id="vazao" name="vazao" />
+			</div>
+			<div class="form-group">
+				<label for="pressao">Pressão (bar)</label>
+				<input class="form-control" type="number" step="0.001" id="pressao" name="pressao" placeholder="Para sensores de pressão" />
+			</div>
+			<button type="submit" class="btn btn-primary">Registrar</button>
+		</form>
+	</div>
+
+	<div class="card">
+		<h3>Histórico</h3>
+		<table class="table">
+			<thead>
+				<tr><th>Sensor</th><th>Data</th><th>Nível</th><th>Vazão</th><th>Pressão</th></tr>
+			</thead>
+			<tbody>
+			<% for (var j = 0; j < (niveis || []).length; j++) {
+				var n = niveis[j];
+			%>
+				<tr>
+					<td><span class="tag"><%= n.codigo %></span></td>
+					<td><%= new Date(n.data).toLocaleString("pt-BR") %></td>
+					<td><%= n.nivel_percentual != null ? parseFloat(n.nivel_percentual).toFixed(1) + '%' : '—' %></td>
+					<td><%= n.vazao != null ? parseFloat(n.vazao).toFixed(1) : '—' %></td>
+					<td><%= n.pressao != null ? parseFloat(n.pressao).toFixed(2) : '—' %></td>
+				</tr>
+			<% } %>
+			</tbody>
+		</table>
+	</div>
+</div>

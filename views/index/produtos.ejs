@@ -1,25 +1,49 @@
-<h1>Sou a página de produtos!</h1>
+<div class="page-header">
+	<h1>Sensores</h1>
+	<a href="/sensores/novo" class="btn btn-primary">+ Novo sensor</a>
+</div>
 
-<p>Listagem de produtos (<%= produtos.length %> produtos no total)</p>
+<% if (mensagem) { %><p class="msg-ok"><%= mensagem %></p><% } %>
+<% if (erro) { %><p class="msg-erro"><%= erro %></p><% } %>
 
-<% for (let contador = 0; contador < produtos.length; contador++) { %>
-
-	<h2>
-		<%= produtos[contador].nome %>
-	</h2>
-
-	<p>
-		Id: <%= produtos[contador].id %>
-	</p>
-
-	<p>
-		Valor: R$ <%= produtos[contador].valor %>
-	</p>
-
-	<hr />
-
-<% } %>
-
-<%- contentFor("espaco-barra") %>
-
-<i>Estou na barra, também! 😊</i>
+<div class="card">
+	<p class="muted"><%= produtos.length %> sensor(es) cadastrado(s)</p>
+	<table class="table">
+		<thead>
+			<tr>
+				<th>Código</th>
+				<th>Nome</th>
+				<th>Tipo</th>
+				<th>Localização</th>
+				<th>Limites</th>
+				<th>Status</th>
+				<th></th>
+			</tr>
+		</thead>
+		<tbody>
+		<% for (var i = 0; i < produtos.length; i++) {
+			var s = produtos[i];
+		%>
+			<tr>
+				<td><span class="tag"><%= s.codigo %></span></td>
+				<td><%= s.nome %></td>
+				<td><%= s.tipo %></td>
+				<td><%= s.localizacao %></td>
+				<td class="muted" style="font-size:0.85rem">
+					Nível <%= parseFloat(s.nivel_critico).toFixed(0) %>% ·
+					H₂S <%= parseFloat(s.h2s_critico).toFixed(3) %> ·
+					NH₃ <%= parseFloat(s.nh3_critico).toFixed(3) %>
+				</td>
+				<td><% if (s.ativo) { %><span style="color:var(--green)">Ativo</span><% } else { %>Inativo<% } %></td>
+				<td>
+					<% if (s.ativo) { %>
+					<form method="post" action="/sensores/<%= s.id %>/excluir" style="display:inline" onsubmit="return confirm('Desativar este sensor?');">
+						<button type="submit" class="btn btn-danger btn-sm">Desativar</button>
+					</form>
+					<% } %>
+				</td>
+			</tr>
+		<% } %>
+		</tbody>
+	</table>
+</div>

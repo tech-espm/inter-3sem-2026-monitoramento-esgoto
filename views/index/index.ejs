@@ -1,66 +1,73 @@
-﻿<div class="container hero">
+﻿<div class="hero-panel">
 	<h1>Monitoramento de Esgoto</h1>
-	<p>Bem-vindo, <%= usuario %>! Visão geral do sistema SewerWatch.</p>
-	<% if (typeof sincronizados !== "undefined" && sincronizados > 0) { %>
-		<p class="msg-ok"><%= sincronizados %> nova(s) leitura(s) de odor sincronizada(s) da API.</p>
+	<p class="hero-sub">Bem-vindo, <strong><%= usuario %></strong>. Visão geral do SewerWatch.</p>
+
+	<% if (avisoDb) { %>
+		<div class="banner-warn"><%= avisoDb %></div>
+	<% } %>
+	<% if (sincronizados > 0) { %>
+		<div class="banner-ok"><%= sincronizados %> leitura(s) de odor sincronizada(s) com a API ESPM.</div>
 	<% } %>
 </div>
 
 <div class="grid-4">
 	<div class="card stat-card">
-		<div class="stat-value"><%= resumo.sensoresAtivos %></motion>
+		<div class="stat-icon">📡</div>
+		<div class="stat-value"><%= resumo.sensoresAtivos %></div>
 		<div class="stat-label">Sensores ativos</div>
 	</div>
 	<div class="card stat-card">
+		<div class="stat-icon">⚠️</div>
 		<div class="stat-value"><%= resumo.alertasAbertos %></div>
-		<div class="stat-label">Alertas abertos</motion>
+		<div class="stat-label">Alertas abertos</div>
 	</div>
 	<div class="card stat-card">
+		<div class="stat-icon">💧</div>
 		<div class="stat-value">
 			<% if (resumo.ultimoNivel) { %>
 				<%= parseFloat(resumo.ultimoNivel.nivel_percentual).toFixed(1) %>%
 			<% } else { %>—<% } %>
 		</div>
-		<div class="stat-label">Último nível (<%= resumo.ultimoNivel ? resumo.ultimoNivel.codigo : "—" %>)</div>
+		<div class="stat-label">Último nível</div>
 	</div>
 	<div class="card stat-card">
+		<div class="stat-icon">🧪</div>
 		<div class="stat-value">
 			<% if (resumo.ultimoOdor.length) { %>
 				<%= parseFloat(resumo.ultimoOdor[0].h2s).toFixed(3) %>
 			<% } else { %>—<% } %>
 		</div>
-		<div class="stat-label">H₂S mais recente (ppm)</div>
+		<div class="stat-label">H₂S recente (ppm)</div>
 	</div>
 </div>
 
-<div class="grid-2" style="margin-top: 20px;">
-	<div class="card">
-		<h3>Acesso rápido</h3>
-		<p><a class="btn btn-primary" href="/dashboard">Abrir Dashboard</a></p>
-		<p><a class="btn btn-secondary" href="/sensores">Gerenciar Sensores</a></p>
-		<p><a class="btn btn-secondary" href="/niveis">Registrar Níveis</a></p>
-		<p><a class="btn btn-secondary" href="/alertas">Ver Alertas</a></p>
-	</div>
-	<div class="card">
-		<h3>Últimas leituras de odor</h3>
-		<% if (!resumo.ultimoOdor.length) { %>
-			<p style="color: var(--text-muted);">Nenhuma leitura no banco. Execute o script SQL e acesse o dashboard para sincronizar.</p>
-		<% } else { %>
-			<table class="table">
-				<thead><tr><th>Sensor</th><th>H₂S</th><th>Bateria</th><th>Data</th></tr></thead>
-				<tbody>
-				<% for (let i = 0; i < resumo.ultimoOdor.length; i++) { %>
-					<tr>
-						<td>odor<%= String(resumo.ultimoOdor[i].id_sensor).padStart(2, "0") %></td>
-						<td><%= parseFloat(resumo.ultimoOdor[i].h2s).toFixed(3) %> ppm</td>
-						<td><%= resumo.ultimoOdor[i].bateria %>%</td>
-						<td><%= new Date(resumo.ultimoOdor[i].data).toLocaleString("pt-BR") %></td>
-					</tr>
-				<% } %>
-				</tbody>
-			</table>
-		<% } %>
+<div class="quick-actions card">
+	<h2>Acesso rápido</h2>
+	<div class="btn-row">
+		<a class="btn btn-primary" href="/dashboard">Dashboard</a>
+		<a class="btn btn-secondary" href="/sensores">Sensores</a>
+		<a class="btn btn-secondary" href="/niveis">Níveis</a>
+		<a class="btn btn-secondary" href="/alertas">Alertas</a>
 	</div>
 </div>
 
-<%- include("exemplo-include") %>
+<div class="card">
+	<h2>Últimas leituras de odor</h2>
+	<% if (!resumo.ultimoOdor.length) { %>
+		<p class="muted">Sem leituras. O sistema cria dados de exemplo na primeira execução com MySQL ativo.</p>
+	<% } else { %>
+		<table class="table">
+			<thead><tr><th>Sensor</th><th>H₂S</th><th>Bateria</th><th>Data</th></tr></thead>
+			<tbody>
+			<% for (var i = 0; i < resumo.ultimoOdor.length; i++) { %>
+				<tr>
+					<td><span class="tag">odor<%= String(resumo.ultimoOdor[i].id_sensor).padStart(2, "0") %></span></td>
+					<td><%= parseFloat(resumo.ultimoOdor[i].h2s).toFixed(3) %> ppm</td>
+					<td><%= resumo.ultimoOdor[i].bateria %>%</td>
+					<td><%= new Date(resumo.ultimoOdor[i].data).toLocaleString("pt-BR") %></td>
+				</tr>
+			<% } %>
+			</tbody>
+		</table>
+	<% } %>
+</div>

@@ -1,164 +1,163 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SewerWatch - Dashboard</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body>
-    <div class="container">
-      <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <div style="display: flex; align-items: center; gap: 20px;">
-        <div class="logo" style="font-weight: bold; font-size: 1.2rem;">SewerWatch</div>
-        
-        <a href="home.html" style="
-            text-decoration: none; 
-            color: #38bdf8; 
-            border: 1px solid #38bdf8; 
-            padding: 5px 15px; 
-            border-radius: 5px; 
-            font-size: 0.8rem;
-            transition: 0.3s;
-        " onmouseover="this.style.background='rgba(56, 189, 248, 0.1)'" onmouseout="this.style.background='transparent'">
-            ← Voltar para Home
-        </a>
-    </div>
+<div class="container">
+	<% var temAlertas = alertas && alertas.length > 0; %>
 
-    <div class="status-top">GS301-915M 🟢</div>
-</header>
+	<% if (temAlertas) { %>
+	<section class="alert-banner critico">
+		<div class="alert-banner-text">
+			<strong><%= alertas.length %> alerta(s) ativo(s)</strong>
+			<p>Verifique os sensores com leituras acima do limite configurado.</p>
+		</div>
+		<div class="alert-time">Atualizado: <%= new Date(atualizadoEm).toLocaleString("pt-BR") %></div>
+	</section>
+	<% } else { %>
+	<section class="alert-banner ok">
+		<div class="alert-banner-text">
+			<strong>Sistema operando normalmente</strong>
+			<p>Nenhum alerta crítico pendente no momento.</p>
+		</div>
+		<div class="alert-time">Atualizado: <%= new Date(atualizadoEm).toLocaleString("pt-BR") %></div>
+	</section>
+	<% } %>
 
-        <section class="alert-banner">
-            <div class="alert-icon">⚠️</div>
-            <div class="alert-content">
-                <strong>Alerta Ativo</strong>
-                <p>Variações anômalas detectadas. Investigação recomendada.</p>
-            </div>
-            <div class="alert-time">Atualizado: 09/03/2026 14:35:22</div>
-        </section>
+	<section class="sensors-grid">
+		<% if (!cards || !cards.length) { %>
+			<div class="card empty-state">
+				<p>Nenhum sensor ativo. <a href="/sensores/novo">Cadastre um sensor</a>.</p>
+			</div>
+		<% } %>
+		<% for (var i = 0; i < (cards || []).length; i++) {
+			var c = cards[i];
+		%>
+		<div class="card <%= c.classe %>">
+			<div class="card-header">
+				<span class="sensor-code"><%= c.codigo %></span>
+				<span class="badge badge-<%= c.status === 'alert' ? 'alerta' : (c.status === 'online' ? 'online' : 'offline') %>"><%= c.badge %></span>
+			</div>
+			<div class="sensor-value"><%- c.valorHtml %></div>
+			<p class="sensor-loc"><%= c.localizacao %></p>
+		</div>
+		<% } %>
+	</section>
 
-        <section class="sensors-grid">
-            <div class="card sensor-card alert">
-                <div class="card-header">
-                    <span>odor01</span>
-                    <span class="badge">Alerta</span>
-                </div>
-                <div class="sensor-value" id="valor-odor-realtime">carregando...</div>
-                <div class="mini-chart"></div>
-            </div>
+	<section class="main-charts">
+		<div class="card chart-card">
+			<h3>H₂S — odor (ppm)</h3>
+			<div class="chart-container"><canvas id="chart-odor"></canvas></div>
+		</div>
+		<div class="card chart-card">
+			<h3>Nível de esgoto (%)</h3>
+			<div class="chart-container"><canvas id="chart-nivel"></canvas></div>
+		</div>
+	</section>
 
-            <div class="card sensor-card online">
-                <div class="card-header">
-                    <span>odor02</span>
-                    <span class="badge">Online</span>
-                </div>
-                <div class="sensor-value">49.1 <small>ppm</small></div>
-                <div class="mini-chart"></div>
-            </div>
-        </section>
+	<section class="main-charts">
+		<div class="card chart-card">
+			<h3>Pressão (bar)</h3>
+			<div class="chart-container"><canvas id="chart-pressao"></canvas></div>
+		</div>
+		<div class="card chart-card">
+			<h3>Temperatura e umidade</h3>
+			<div class="chart-container"><canvas id="chart-temp"></canvas></div>
+		</div>
+	</section>
 
-        <section class="main-charts">
-            <div class="card chart-large">
-                <h3>Variação de Odor (H₂S ppm)</h3>
-                <div class="chart-container" style="position: relative; height: 280px;">
-                    <canvas id="chart-odor"></canvas>
-                </div>
-            </div>
-            <div class="card chart-large">
-                <h3>Pressão da Tubulação (bar)</h3>
-                <div class="chart-container" style="position: relative; height: 280px;">
-                    <canvas id="chart-pressure"></canvas>
-                </div>
-            </div>
-        </section>
+	<section class="bottom-grid">
+		<div class="card">
+			<h3>Alertas recentes</h3>
+			<% if (!temAlertas) { %>
+				<p class="muted">Nenhum alerta aberto.</p>
+			<% } %>
+			<% for (var j = 0; j < (alertas || []).length; j++) { %>
+				<div class="alert-item <%= alertas[j].severidade %>">
+					<strong>[<%= alertas[j].codigo %>]</strong> <%= alertas[j].mensagem %>
+					<small><%= new Date(alertas[j].data).toLocaleString("pt-BR") %></small>
+				</div>
+			<% } %>
+			<a href="/alertas" class="btn btn-secondary btn-sm">Ver todos os alertas</a>
+		</div>
+		<div class="card">
+			<h3>Rede de monitoramento</h3>
+			<div class="pipe-line">
+				<% for (var k = 0; k < Math.min((cards || []).length, 4); k++) {
+					var node = cards[k];
+				%>
+				<div class="pipe-node <%= node.status === 'alert' ? 'alerta' : (node.status === 'online' ? 'ativo' : '') %>">
+					<%= node.codigo %>
+					<small><%= node.tipo %></small>
+				</div>
+				<% if (k < Math.min((cards || []).length, 4) - 1) { %><span class="pipe-arrow">→</span><% } %>
+				<% } %>
+			</div>
+		</div>
+	</section>
+</div>
 
-        <section class="correlation-area" style="margin-top: 20px;">
-            <div class="card">
-                <h3>Correlação Odor x Pressão</h3>
-                <div class="chart-container" style="position: relative; height: 280px;">
-                    <canvas id="chart-correlation"></canvas>
-                </div>
-            </div>
-        </section>
+<%- contentFor("espaco-head") %>
+<script>
+(function () {
+	var graficos = <%- JSON.stringify(graficos || {}) %>;
 
-        <section class="bottom-grid" style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-            <div class="card alerts-list">
-                <h3>Alertas e Detecção de Problemas</h3>
-                <div class="alert-item high" style="padding: 10px; background: rgba(255,0,0,0.1); margin-top: 10px; border-radius: 4px;">
-                    Vazamento [odor01]
-                </div>
-                <div class="alert-item medium" style="padding: 10px; background: rgba(255,165,0,0.1); margin-top: 10px; border-radius: 4px;">
-                    Anomalia [odor01]
-                </div>
-            </div>
-            <div class="card pipe-diagram">
-                <h3>Diagrama da Tubulação</h3>
-                <div class="diagram-placeholder" style="height: 100px; border: 1px dashed #444; display: flex; align-items: center; justify-content: center; margin-top: 10px;">
-                    Visualização do Sistema
-                </div>
-            </div>
-        </section>
-    </div>
+	function criarLinha(id, label, labels, values, cor) {
+		var el = document.getElementById(id);
+		if (!el || !labels.length) return;
+		new Chart(el, {
+			type: "line",
+			data: {
+				labels: labels,
+				datasets: [{
+					label: label,
+					data: values,
+					borderColor: cor,
+					backgroundColor: cor + "33",
+					fill: true,
+					tension: 0.35,
+					pointRadius: 3
+				}]
+			},
+			options: {
+				responsive: true,
+				maintainAspectRatio: false,
+				plugins: { legend: { labels: { color: "#94a3b8" } } },
+				scales: {
+					x: { ticks: { color: "#64748b" }, grid: { color: "#334155" } },
+					y: { beginAtZero: true, ticks: { color: "#64748b" }, grid: { color: "#334155" } }
+				}
+			}
+		});
+	}
 
-    <script>
-        // Configuração do Gráfico
-        const ctxOdor = document.getElementById('chart-odor').getContext('2d');
-        const meuGraficoOdor = new Chart(ctxOdor, {
-            type: 'line',
-            data: { 
-                labels: [], 
-                datasets: [{ 
-                    label: 'H2S ppm', 
-                    data: [],
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    fill: true,
-                    tension: 0.3
-                }] 
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: { y: { beginAtZero: true } }
-            }
-        });
-
-        async function atualizarDados() {
-            // Nova tentativa com AllOrigins (formato que costuma burlar melhor o CORS)
-            const targetUrl = 'https://iagen.espm.br/sensores/dados?sensor=odor&data_inicial=2026-01-01&data_final=2027-01-01';
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-            
-            try {
-                const resposta = await fetch(proxyUrl);
-                const dadosProxy = await resposta.json();
-                
-                // O AllOrigins retorna o JSON dentro de uma string chamada 'contents'
-                const todosDados = JSON.parse(dadosProxy.contents);
-
-                if (todosDados && todosDados.length > 0) {
-                    const ultimosVinte = todosDados.slice(-20);
-                    
-                    const labels = ultimosVinte.map(d => d.data.split(' ')[1]);
-                    const valores = ultimosVinte.map(d => parseFloat(d.h2s));
-
-                    meuGraficoOdor.data.labels = labels;
-                    meuGraficoOdor.data.datasets[0].data = valores;
-                    meuGraficoOdor.update();
-
-                    const ultimoVal = valores[valores.length - 1];
-                    document.getElementById('valor-odor-realtime').innerHTML = `${ultimoVal.toFixed(2)} <small>ppm</small>`;
-                }
-            } catch (err) {
-                console.error("Erro na busca:", err);
-                // Se der erro, ele exibe no card. 
-                // Se o AllOrigins falhar, pode ser necessário rodar o Chrome com segurança desativada para fins de teste.
-                document.getElementById('valor-odor-realtime').innerText = "Erro de Conexão";
-            }
-        }
-
-        atualizarDados();
-        setInterval(atualizarDados, 10000);
-    </script>
-</body>
-</html>
+	if (graficos.graficoOdor) {
+		criarLinha("chart-odor", "H2S", graficos.graficoOdor.labels, graficos.graficoOdor.values, "#22d3ee");
+	}
+	if (graficos.graficoNivel) {
+		criarLinha("chart-nivel", "Nivel %", graficos.graficoNivel.labels, graficos.graficoNivel.values, "#4ade80");
+	}
+	if (graficos.graficoPressao) {
+		criarLinha("chart-pressao", "Pressao", graficos.graficoPressao.labels, graficos.graficoPressao.values, "#fbbf24");
+	}
+	if (graficos.graficoTemp && graficos.graficoTemp.labels.length) {
+		var elTemp = document.getElementById("chart-temp");
+		if (elTemp) {
+			new Chart(elTemp, {
+				type: "line",
+				data: {
+					labels: graficos.graficoTemp.labels,
+					datasets: [
+						{ label: "Temp C", data: graficos.graficoTemp.temp, borderColor: "#f87171", tension: 0.35 },
+						{ label: "Umidade %", data: graficos.graficoTemp.umidade, borderColor: "#a78bfa", tension: 0.35 }
+					]
+				},
+				options: {
+					responsive: true,
+					maintainAspectRatio: false,
+					plugins: { legend: { labels: { color: "#94a3b8" } } },
+					scales: {
+						x: { ticks: { color: "#64748b" }, grid: { color: "#334155" } },
+						y: { ticks: { color: "#64748b" }, grid: { color: "#334155" } }
+					}
+				}
+			});
+		}
+	}
+})();
+</script>

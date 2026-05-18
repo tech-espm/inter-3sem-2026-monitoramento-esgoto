@@ -1,5 +1,44 @@
-<h1>Eu sou a página de teste</h1>
+<div class="page-header">
+	<h1>Cadastrar sensor</h1>
+	<a href="/sensores" class="btn btn-secondary">Voltar</a>
+</div>
 
-<%- include("exemplo-include") %>
+<% if (erro) { %><p class="msg-erro"><%= erro %></p><% } %>
 
-<p>Fim do conteúdo!</p>
+<div class="card" style="max-width: 520px;">
+	<form method="post" action="/sensores/novo">
+		<div class="form-group">
+			<label for="codigo">Código *</label>
+			<input class="form-control" type="text" id="codigo" name="codigo" required maxlength="20" placeholder="ex: odor03" />
+		</div>
+		<div class="form-group">
+			<label for="nome">Nome *</label>
+			<input class="form-control" type="text" id="nome" name="nome" required maxlength="100" />
+		</div>
+		<div class="form-group">
+			<label for="tipo">Tipo *</label>
+			<select class="form-control" id="tipo" name="tipo" required>
+				<option value="odor">Odor (gases H₂S / NH₃)</option>
+				<option value="nivel">Nível de esgoto</option>
+				<option value="pressao">Pressão na tubulação</option>
+			</select>
+		</div>
+		<div class="form-group">
+			<label for="localizacao">Localização *</label>
+			<input class="form-control" type="text" id="localizacao" name="localizacao" required maxlength="150" />
+		</div>
+		<div class="form-group">
+			<label for="nivel_critico">Nível crítico (%)</label>
+			<input class="form-control" type="number" step="0.1" id="nivel_critico" name="nivel_critico" value="80" />
+		</div>
+		<div class="form-group">
+			<label for="h2s_critico">H₂S crítico (ppm)</label>
+			<input class="form-control" type="number" step="0.001" id="h2s_critico" name="h2s_critico" value="0.05" />
+		</div>
+		<div class="form-group">
+			<label for="nh3_critico">NH₃ crítico (ppm)</label>
+			<input class="form-control" type="number" step="0.001" id="nh3_critico" name="nh3_critico" value="0.03" />
+		</div>
+		<button type="submit" class="btn btn-primary">Salvar</button>
+	</form>
+</div>

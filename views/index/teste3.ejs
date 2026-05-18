@@ -1,3 +1,46 @@
-<p><u>Eu sou a página de teste 3</u></p>
+<div class="page-header">
+	<h1>Alertas</h1>
+	<a href="/dashboard" class="btn btn-secondary">Dashboard</a>
+</div>
 
-<p>Fim do conteúdo 3!</p>
+<% if (mensagem) { %><p class="msg-ok"><%= mensagem %></p><% } %>
+
+<div class="card">
+	<table class="table">
+		<thead>
+			<tr>
+				<th>Data</th>
+				<th>Sensor</th>
+				<th>Tipo</th>
+				<th>Mensagem</th>
+				<th>Severidade</th>
+				<th>Status</th>
+				<th></th>
+			</tr>
+		</thead>
+		<tbody>
+		<% for (var i = 0; i < (alertas || []).length; i++) {
+			var a = alertas[i];
+		%>
+			<tr>
+				<td><%= new Date(a.data).toLocaleString("pt-BR") %></td>
+				<td>
+					<span class="tag"><%= a.codigo %></span><br>
+					<small class="muted"><%= a.localizacao %></small>
+				</td>
+				<td><%= a.tipo %></td>
+				<td><%= a.mensagem %></td>
+				<td><span class="badge badge-<%= a.severidade %>"><%= a.severidade %></span></td>
+				<td><%= a.resolvido ? 'Resolvido' : 'Aberto' %></td>
+				<td>
+					<% if (!a.resolvido) { %>
+					<form method="post" action="/alertas/<%= a.id %>/resolver">
+						<button type="submit" class="btn btn-primary btn-sm">Resolver</button>
+					</form>
+					<% } %>
+				</td>
+			</tr>
+		<% } %>
+		</tbody>
+	</table>
+</div>
