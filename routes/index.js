@@ -33,7 +33,7 @@ router.get("/", wrap(async (req, res) => {
 		quantidadeDeRepeticoes: 5
 	};
 
-	res.render("index/index", opcoes);
+	res.render("index/dashboard", opcoes);
 }));
 
 router.get("/teste", wrap(async (req, res) => {
