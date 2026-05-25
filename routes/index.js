@@ -419,4 +419,61 @@ router.post("/alertas/:id/resolver", wrap(async (req, res) => {
 	res.redirect("/alertas?ok=1");
 }));
 
+router.get("/dados/consolidadoDiaDaSemana", wrap(async (req, res) => {
+	let dados;
+
+	await sql.connect(async (conn) => {
+		dados = await conn.query(
+			`
+			select dayofweek(data) dia_semana, extract(hour from data) hora, max(h2s) h2s, max(umidade) umidade, max(nh3) nh3, max(temperatura) temperatura
+			from odor
+			where data between ? and ?
+			and id_sensor = 2
+			group by dia_semana, hora
+			`,
+			[req.query["data_inicial"], req.query["data_final"]]
+		);
+	});
+
+	res.json(dados);
+}));
+
+router.get("/dados/consolidadoDiaDoMesHora", wrap(async (req, res) => {
+	let dados;
+
+	await sql.connect(async (conn) => {
+		dados = await conn.query(
+			`
+			select date_format(date(data), '%d/%m/%Y') dia, extract(hour from data) hora, max(h2s) h2s, max(umidade) umidade, max(nh3) nh3, max(temperatura) temperatura
+			from odor
+			where data between ? and ?
+			and id_sensor = 2
+			group by dia, hora
+			`,
+			[req.query["data_inicial"], req.query["data_final"]]
+		);
+	});
+
+	res.json(dados);
+}));
+
+router.get("/dados/consolidadoDiaDoMes", wrap(async (req, res) => {
+	let dados;
+
+	await sql.connect(async (conn) => {
+		dados = await conn.query(
+			`
+			select date_format(date(data), '%d/%m/%Y') dia, max(h2s) h2s, max(umidade) umidade, max(nh3) nh3, max(temperatura) temperatura
+			from odor
+			where data between ? and ?
+			and id_sensor = 2
+			group by dia
+			`,
+			[req.query["data_inicial"], req.query["data_final"]]
+		);
+	});
+
+	res.json(dados);
+}));
+
 module.exports = router;
