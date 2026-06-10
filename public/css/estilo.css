@@ -412,6 +412,107 @@ a:hover { text-decoration: underline; }
 
 .empty-state { text-align: center; padding: 32px; color: var(--muted); }
 
+.sobre-page { gap: 28px; }
+
+.sobre-hero {
+    max-width: 900px;
+    padding: 16px 0 4px;
+}
+
+.sobre-hero .hero-sub {
+    max-width: 850px;
+    font-size: 1.02rem;
+}
+
+.sobre-quem-somos {
+    margin-top: 12px;
+}
+
+.sobre-eyebrow {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.sobre-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+
+.sobre-info-card {
+    border-top: 2px solid var(--accent-dim);
+}
+
+.sobre-info-card h2,
+.sobre-monitoramento h2,
+.sobre-equipe h2 {
+    margin: 0 0 12px;
+    font-size: 1.25rem;
+}
+
+.sobre-info-card p,
+.sobre-monitoramento p {
+    margin: 0 0 12px;
+    color: var(--muted);
+}
+
+.sobre-info-card p:last-child,
+.sobre-monitoramento p:last-child {
+    margin-bottom: 0;
+}
+
+.sobre-monitoramento {
+    display: grid;
+    grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.5fr);
+    gap: 28px;
+    align-items: center;
+    border-color: rgba(74, 222, 128, 0.45);
+}
+
+.sobre-integrantes-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    max-width: 820px;
+    margin: 0 auto;
+}
+
+.sobre-integrante-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    text-align: center;
+    border-color: rgba(34, 211, 238, 0.3);
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.sobre-integrante-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-dim);
+}
+
+.sobre-integrante-card h3 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.sobre-integrante-foto {
+    display: block;
+    width: 128px;
+    height: 128px;
+    border: 3px solid rgba(34, 211, 238, 0.45);
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    object-fit: cover;
+}
+
 .site-footer {
     text-align: center;
     padding: 24px;
@@ -425,4 +526,15 @@ a:hover { text-decoration: underline; }
     .site-header { padding: 12px 16px; }
     .main-content { padding: 16px; }
     .stat-value { font-size: 1.6rem; }
+    .sobre-info-grid,
+    .sobre-monitoramento {
+        grid-template-columns: 1fr;
+    }
+    .sobre-integrantes-grid {
+        grid-template-columns: 1fr;
+    }
+    .sobre-integrante-foto {
+        width: 104px;
+        height: 104px;
+    }
 }

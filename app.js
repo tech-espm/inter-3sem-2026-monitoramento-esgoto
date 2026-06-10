@@ -63,6 +63,15 @@ app.use("/public", express.static(path.join(__dirname, "public"), {
 	etag: false,
 	maxAge: "30d"
 }));
+app.use("/img", express.static(path.join(__dirname, "public", "img"), {
+	cacheControl: true,
+	etag: false,
+	maxAge: "30d",
+	setHeaders: (res, filePath) => {
+		if (filePath.toLowerCase().endsWith(".jfif"))
+			res.type("image/jpeg");
+	}
+}));
 app.use("/vendor/chart.js", express.static(path.join(__dirname, "node_modules", "chart.js", "dist"), {
 	cacheControl: true,
 	etag: false,

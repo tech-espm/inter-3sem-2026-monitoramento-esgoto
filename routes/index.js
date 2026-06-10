@@ -345,6 +345,12 @@ router.get("/", wrap(async (req, res) => {
 	});
 }));
 
+router.get("/sobre", wrap(async (req, res) => {
+	res.render("index/sobre", {
+		titulo: "Sobre nós"
+	});
+}));
+
 router.get("/dashboard", wrap(async (req, res) => {
 	let dados = emptyDashboard();
 	let avisoDb = null;

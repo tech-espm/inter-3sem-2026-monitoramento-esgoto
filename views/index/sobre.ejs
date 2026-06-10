@@ -1,0 +1,110 @@
+<div class="container sobre-page">
+	<%
+	var integrantes = [
+		{
+			nome: "Gustavo Carvalho",
+			foto: "/img/integrantes/gustavo.jfif",
+			linkedin: "https://www.linkedin.com/in/gustavo-carvalho-b80371351/"
+		},
+		{
+			nome: "João Vitor Yazbek",
+			foto: "/img/integrantes/joao.jpeg",
+			linkedin: "https://www.linkedin.com/in/jo%C3%A3o-vitor-yazbek-106441351/"
+		},
+		{
+			nome: "Ricardo M.",
+			foto: "/img/integrantes/ricardo.jfif",
+			linkedin: "https://www.linkedin.com/in/ricardo-m-0b9665307/"
+		},
+		{
+			nome: "Luccas Toffano",
+			foto: "/img/integrantes/lucas.jfif",
+			linkedin: "https://www.linkedin.com/in/luccas-toffano-694952350/"
+		}
+	];
+	%>
+
+	<section class="hero-panel sobre-hero">
+		<span class="sobre-eyebrow">Projeto Integrado</span>
+		<h1>Sobre o SewerWatch</h1>
+		<p class="hero-sub">
+			O SewerWatch é um sistema de monitoramento de esgoto desenvolvido como projeto integrado do semestre.
+			A proposta é acompanhar sensores distribuídos na rede de esgoto, exibindo informações como nível,
+			pressão, presença de gases, temperatura, umidade e alertas operacionais.
+		</p>
+		<p class="hero-sub sobre-quem-somos">
+			Somos estudantes do curso de Ciência de Dados e Negócios da ESPM, reunidos para desenvolver uma solução
+			que aproxima tecnologia, análise de dados e cuidado com a infraestrutura urbana.
+		</p>
+	</section>
+
+	<section class="sobre-info-grid">
+		<article class="card sobre-info-card">
+			<h2>Objetivo do projeto</h2>
+			<p>
+				O objetivo do projeto é oferecer uma solução visual e prática para acompanhar dados de sensores
+				em tempo real ou quase real, ajudando na identificação de situações críticas, como aumento do
+				nível de esgoto, alteração de pressão e presença de gases como H₂S.
+			</p>
+			<p>
+				Com isso, o sistema auxilia na tomada de decisão, prevenção de falhas e melhoria do controle operacional.
+			</p>
+		</article>
+
+		<article class="card sobre-info-card">
+			<h2>Problema que buscamos resolver</h2>
+			<p>
+				Em redes de esgoto, a falta de monitoramento pode dificultar a identificação rápida de pontos críticos.
+				O SewerWatch busca centralizar essas informações em um dashboard simples, permitindo visualizar
+				sensores ativos, leituras recentes, gráficos históricos e alertas.
+			</p>
+			<p>
+				Essa visão centralizada ajuda equipes responsáveis a acompanhar a operação e agir com mais rapidez.
+			</p>
+		</article>
+	</section>
+
+	<section class="card sobre-monitoramento">
+		<div>
+			<span class="sobre-eyebrow">Monitoramento inteligente</span>
+			<h2>Como o SewerWatch ajuda</h2>
+		</div>
+		<p>
+			O sistema reúne dados de nível, pressão, gases, temperatura e umidade em uma única interface.
+			Os cards apresentam o estado mais recente dos sensores, os gráficos ajudam a observar o histórico
+			das leituras e os alertas destacam condições que exigem atenção.
+		</p>
+	</section>
+
+	<section class="sobre-equipe">
+		<div class="page-header">
+			<div>
+				<span class="sobre-eyebrow">Nossa equipe</span>
+				<h2>Integrantes do grupo</h2>
+			</div>
+		</div>
+
+		<div class="sobre-integrantes-grid">
+			<% for (var i = 0; i < integrantes.length; i++) {
+				var integrante = integrantes[i];
+			%>
+			<article class="card sobre-integrante-card">
+				<img
+					class="sobre-integrante-foto"
+					src="<%= integrante.foto %>"
+					alt="Foto de <%= integrante.nome %>"
+					width="128"
+					height="128"
+				/>
+				<h3><%= integrante.nome %></h3>
+				<a
+					class="btn btn-primary btn-sm"
+					href="<%= integrante.linkedin %>"
+					target="_blank"
+					rel="noopener noreferrer"
+				>LinkedIn</a>
+			</article>
+			<% } %>
+		</div>
+	</section>
+</div>
