@@ -11,64 +11,31 @@ class Sql {
 		this.resultFields = null;
 	}
 	static async connect(callback) {
-		return new Promise(function (resolve, reject) {
-			pool.getConnection(function (error, connection) {
-				if (error) {
-					reject(error);
-					return;
-				}
-				const sql = new Sql();
-				sql.connection = connection;
-				function cleanUp() {
-					if (sql) {
-						sql.connection = null;
-						sql.resultFields = null;
-					}
-					connection.release();
-				}
-				try {
-					callback(sql)
-						.then(function (value) {
-						if (sql.pendingTransaction) {
-							sql.pendingTransaction = false;
-							connection.rollback(function () {
-								cleanUp();
-								resolve(value);
-							});
-						}
-						else {
-							cleanUp();
-							resolve(value);
-						}
-					}, function (reason) {
-						if (sql.pendingTransaction) {
-							sql.pendingTransaction = false;
-							connection.rollback(function () {
-								cleanUp();
-								reject(reason);
-							});
-						}
-						else {
-							cleanUp();
-							reject(reason);
-						}
-					});
-				}
-				catch (e) {
-					if (sql.pendingTransaction) {
-						sql.pendingTransaction = false;
-						connection.rollback(function () {
-							cleanUp();
-							reject(e);
-						});
-					}
-					else {
-						cleanUp();
-						reject(e);
-					}
-				}
-			});
+		if (!pool)
+			throw new Error("Pool MySQL não inicializado");
+		if (typeof callback !== "function")
+			throw new Error("Callback de conexão inválido");
+
+		const connection = await new Promise((resolve, reject) => {
+			pool.getConnection((error, conn) => error ? reject(error) : resolve(conn));
 		});
+		const sql = new Sql();
+		sql.connection = connection;
+
+		try {
+			return await callback(sql);
+		} finally {
+			if (sql.pendingTransaction) {
+				try {
+					await sql.rollback();
+				} catch (error) {
+					console.error("Falha ao desfazer transação MySQL:", error.message);
+				}
+			}
+			sql.connection = null;
+			sql.resultFields = null;
+			connection.release();
+		}
 	}
 	static init(poolConfig) {
 		if (!poolConfig)
@@ -77,6 +44,8 @@ class Sql {
 			pool = mysql.createPool(poolConfig);
 	}
 	async query(queryStr, values) {
+		if (!this.connection)
+			throw new Error("Conexão MySQL não disponível");
 		return new Promise((resolve, reject) => {
 			const callback = (error, results, fields) => {
 				if (error) {
@@ -87,8 +56,6 @@ class Sql {
 				this.resultFields = (fields || null);
 				resolve(results);
 			};
-			if (!this.connection)
-				throw new Error("Null connection");
 			if (values && values.length)
 				this.connection.query(queryStr, values, callback);
 			else
@@ -96,6 +63,8 @@ class Sql {
 		});
 	}
 	async scalar(queryStr, values) {
+		if (!this.connection)
+			throw new Error("Conexão MySQL não disponível");
 		return new Promise((resolve, reject) => {
 			const callback = (error, results, fields) => {
 				if (error) {
@@ -115,8 +84,6 @@ class Sql {
 				}
 				resolve(null);
 			};
-			if (!this.connection)
-				throw new Error("Null connection");
 			if (values && values.length)
 				this.connection.query(queryStr, values, callback);
 			else
@@ -126,9 +93,9 @@ class Sql {
 	async beginTransaction() {
 		if (this.pendingTransaction)
 			throw new Error("There is already an open transaction in this connection");
+		if (!this.connection)
+			throw new Error("Conexão MySQL não disponível");
 		return new Promise((resolve, reject) => {
-			if (!this.connection)
-				throw new Error("Null connection");
 			this.connection.beginTransaction((error) => {
 				if (error) {
 					reject(error);
@@ -142,9 +109,9 @@ class Sql {
 	async commit() {
 		if (!this.pendingTransaction)
 			return;
+		if (!this.connection)
+			throw new Error("Conexão MySQL não disponível");
 		return new Promise((resolve, reject) => {
-			if (!this.connection)
-				throw new Error("Null connection");
 			this.connection.commit((error) => {
 				if (error) {
 					reject(error);
@@ -158,9 +125,9 @@ class Sql {
 	async rollback() {
 		if (!this.pendingTransaction)
 			return;
+		if (!this.connection)
+			throw new Error("Conexão MySQL não disponível");
 		return new Promise((resolve, reject) => {
-			if (!this.connection)
-				throw new Error("Null connection");
 			this.connection.rollback(() => {
 				this.pendingTransaction = false;
 				resolve();

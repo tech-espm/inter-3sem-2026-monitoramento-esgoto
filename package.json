@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node app.js",
     "dev": "node app.js",
-    "db:init": "node -e \"require('dotenv').config();const s=require('./data/sql');s.init({connectionLimit:30,waitForConnections:true,charset:process.env.sql_charset,host:process.env.sql_host,port:parseInt(process.env.sql_port),user:process.env.sql_user,password:process.env.sql_password,database:process.env.sql_database});require('./data/init-db').ensureSchema().then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1)})\""
+    "db:init": "node data/run-init-db.js"
   },
   "author": "ESPM",
   "license": "MIT",

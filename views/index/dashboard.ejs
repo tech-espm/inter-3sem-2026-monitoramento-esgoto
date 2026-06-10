@@ -1,6 +1,10 @@
 <div class="container">
 	<% var temAlertas = alertas && alertas.length > 0; %>
 
+	<% if (avisoDb) { %>
+	<div class="banner-warn"><%= avisoDb %></div>
+	<% } %>
+
 	<% if (temAlertas) { %>
 	<section class="alert-banner critico">
 		<div class="alert-banner-text">

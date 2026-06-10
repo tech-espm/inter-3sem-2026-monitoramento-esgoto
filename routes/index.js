@@ -2,292 +2,328 @@ const express = require("express");
 const wrap = require("express-async-error-wrapper");
 const axios = require("axios");
 const sql = require("../data/sql");
+const repository = require("../data/repositories/monitoramentoRepository");
 
 const router = express.Router();
-const url_api = process.env.url_api || "";
+const DB_MESSAGE = "Não foi possível consultar o MySQL. Verifique a conexão e tente novamente.";
 
-function pad2(n) {
-	return String(n).padStart(2, "0");
+function pad2(value) {
+	return String(value).padStart(2, "0");
 }
 
 function codigoOdor(idSensor) {
 	return "odor" + pad2(idSensor);
 }
 
-async function sincronizarOdor(sqlConn) {
-	if (!url_api) {
-		return 0;
-	}
-
-	let idInferior = 0;
-	try {
-		const maxRow = await sqlConn.query("SELECT COALESCE(MAX(id), 0) AS id FROM odor");
-		if (maxRow[0]) {
-			idInferior = Number(maxRow[0].id) || 0;
-		}
-	} catch (e) {
-		return 0;
-	}
-
-	const response = await axios.get(url_api + "?sensor=odor&id_inferior=" + idInferior, { timeout: 12000 });
-	const dadosNovos = Array.isArray(response.data) ? response.data : [];
-
-	for (let i = 0; i < dadosNovos.length; i++) {
-		const d = dadosNovos[i];
-		await sqlConn.query(
-			"INSERT IGNORE INTO odor (id, data, id_sensor, delta, bateria, h2s, umidade, nh3, temperatura) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			[d.id, d.data, d.id_sensor, d.delta, d.bateria, d.h2s, d.umidade, d.nh3, d.temperatura]
-		);
-		await gerarAlertasOdor(sqlConn, d);
-	}
-
-	return dadosNovos.length;
+function parseId(value) {
+	const parsed = Number.parseInt(value, 10);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-async function gerarAlertasOdor(sqlConn, leitura) {
-	const codigo = codigoOdor(leitura.id_sensor);
-	const rows = await sqlConn.query(
-		"SELECT id, codigo, h2s_critico, nh3_critico FROM sensor WHERE codigo = ? AND ativo = 1 LIMIT 1",
-		[codigo]
+function parseOptionalNumber(value) {
+	if (value == null || value === "") {
+		return null;
+	}
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function parseNumberOrDefault(value, fallback) {
+	const parsed = Number(value);
+	return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function emptyGraphs() {
+	return {
+		graficoOdor: { labels: [], values: [] },
+		graficoNivel: { labels: [], values: [] },
+		graficoPressao: { labels: [], values: [] },
+		graficoTemp: { labels: [], temp: [], umidade: [] }
+	};
+}
+
+function emptyDashboard() {
+	return {
+		sensores: [],
+		leiturasOdor: [],
+		niveis: [],
+		pressoes: [],
+		alertas: [],
+		cards: [],
+		graficos: emptyGraphs()
+	};
+}
+
+function logDatabaseError(context, error) {
+	let message = error && error.message;
+	if (!message && error && Array.isArray(error.errors)) {
+		message = error.errors
+			.map((item) => item.message || item.code)
+			.filter(Boolean)
+			.join("; ");
+	}
+	console.error("[DB][" + context + "]", message || (error && error.code) || "Falha de conexão com o MySQL");
+}
+
+async function gerarAlertasOdor(conn, sensor, leitura) {
+	if (Number(leitura.h2s) >= Number(sensor.h2s_critico)) {
+		const existe = await conn.scalar(
+			`SELECT COUNT(*)
+			 FROM alerta
+			 WHERE id_sensor = ?
+			   AND tipo = 'h2s_elevado'
+			   AND resolvido = 0
+			   AND data >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+			[sensor.id]
+		);
+		if (!existe) {
+			await conn.query(
+				`INSERT INTO alerta (id_sensor, tipo, mensagem, severidade)
+				 VALUES (?, 'h2s_elevado', ?, 'alta')`,
+				[sensor.id, "H₂S elevado em " + sensor.codigo + " (" + leitura.h2s + " ppm)"]
+			);
+		}
+	}
+
+	if (Number(leitura.nh3) >= Number(sensor.nh3_critico)) {
+		const existe = await conn.scalar(
+			`SELECT COUNT(*)
+			 FROM alerta
+			 WHERE id_sensor = ?
+			   AND tipo = 'nh3_elevado'
+			   AND resolvido = 0
+			   AND data >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+			[sensor.id]
+		);
+		if (!existe) {
+			await conn.query(
+				`INSERT INTO alerta (id_sensor, tipo, mensagem, severidade)
+				 VALUES (?, 'nh3_elevado', ?, 'media')`,
+				[sensor.id, "NH₃ elevado em " + sensor.codigo + " (" + leitura.nh3 + " ppm)"]
+			);
+		}
+	}
+}
+
+async function sincronizarOdor(conn) {
+	const urlApi = process.env.url_api || "";
+	if (!urlApi) {
+		return 0;
+	}
+
+	const idInferior = Number(await conn.scalar(
+		"SELECT COALESCE(MAX(id), 0) FROM odor"
+	)) || 0;
+	const response = await axios.get(urlApi, {
+		params: { sensor: "odor", id_inferior: idInferior },
+		timeout: 12000
+	});
+	const dadosNovos = Array.isArray(response.data) ? response.data : [];
+	const sensores = await conn.query(
+		`SELECT id, codigo, h2s_critico, nh3_critico
+		 FROM sensor
+		 WHERE tipo = 'odor' AND ativo = 1`
 	);
-	if (!rows.length) {
+	const sensoresPorCodigo = new Map(sensores.map((sensor) => [sensor.codigo, sensor]));
+	let inseridos = 0;
+
+	for (const leitura of dadosNovos) {
+		const sensor = sensoresPorCodigo.get(codigoOdor(leitura.id_sensor));
+		if (!sensor) {
+			continue;
+		}
+
+		await conn.query(
+			`INSERT IGNORE INTO odor
+				(id, data, id_sensor, delta, bateria, h2s, umidade, nh3, temperatura)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			[
+				leitura.id,
+				leitura.data,
+				sensor.id,
+				leitura.delta,
+				leitura.bateria,
+				leitura.h2s,
+				leitura.umidade,
+				leitura.nh3,
+				leitura.temperatura
+			]
+		);
+
+		if (conn.affectedRows > 0) {
+			inseridos++;
+			await gerarAlertasOdor(conn, sensor, leitura);
+		}
+	}
+
+	return inseridos;
+}
+
+function sincronizarOdorEmSegundoPlano() {
+	if (!process.env.url_api) {
 		return;
 	}
 
-	const sensorRef = rows[0];
-
-	if (Number(leitura.h2s) >= Number(sensorRef.h2s_critico)) {
-		const existe = await sqlConn.scalar(
-			"SELECT COUNT(*) FROM alerta WHERE id_sensor = ? AND tipo = 'h2s_elevado' AND resolvido = 0 AND data >= DATE_SUB(NOW(), INTERVAL 1 HOUR)",
-			[sensorRef.id]
-		);
-		if (!existe) {
-			await sqlConn.query(
-				"INSERT INTO alerta (id_sensor, tipo, mensagem, severidade) VALUES (?, 'h2s_elevado', ?, 'alta')",
-				[sensorRef.id, "H2S elevado em " + sensorRef.codigo + " (" + leitura.h2s + " ppm)"]
-			);
-		}
-	}
-
-	if (Number(leitura.nh3) >= Number(sensorRef.nh3_critico)) {
-		const existe = await sqlConn.scalar(
-			"SELECT COUNT(*) FROM alerta WHERE id_sensor = ? AND tipo = 'nh3_elevado' AND resolvido = 0 AND data >= DATE_SUB(NOW(), INTERVAL 1 HOUR)",
-			[sensorRef.id]
-		);
-		if (!existe) {
-			await sqlConn.query(
-				"INSERT INTO alerta (id_sensor, tipo, mensagem, severidade) VALUES (?, 'nh3_elevado', ?, 'media')",
-				[sensorRef.id, "NH3 elevado em " + sensorRef.codigo + " (" + leitura.nh3 + " ppm)"]
-			);
-		}
-	}
+	sql.connect(sincronizarOdor)
+		.then((total) => {
+			if (total > 0) {
+				console.log(total + " leitura(s) de odor sincronizada(s).");
+			}
+		})
+		.catch((error) => {
+			console.error("[API odor]", error.message);
+		});
 }
 
-async function carregarResumo() {
-	return sql.connect(async (conn) => {
-		const sensoresAtivos = await conn.scalar("SELECT COUNT(*) FROM sensor WHERE ativo = 1") || 0;
-		const alertasAbertos = await conn.scalar("SELECT COUNT(*) FROM alerta WHERE resolvido = 0") || 0;
-		const ultimoNivel = await conn.query(
-			`SELECT n.nivel_percentual, n.data, s.codigo
-			 FROM nivel_esgoto n
-			 INNER JOIN sensor s ON s.id = n.id_sensor
-			 WHERE s.tipo = 'nivel' AND n.nivel_percentual IS NOT NULL
-			 ORDER BY n.data DESC LIMIT 1`
-		);
-		const ultimoOdor = await conn.query(
-			"SELECT h2s, data, id_sensor, bateria FROM odor ORDER BY data DESC LIMIT 2"
-		);
-		return {
-			sensoresAtivos,
-			alertasAbertos,
-			ultimoNivel: ultimoNivel[0] || null,
-			ultimoOdor: ultimoOdor || []
-		};
-	});
-}
-
-function montarCardsSensores(sensores, leiturasOdor, niveis, pressoes) {
-	const cards = [];
-
-	for (let i = 0; i < sensores.length; i++) {
-		const s = sensores[i];
-		let card = {
-			codigo: s.codigo,
-			nome: s.nome,
-			localizacao: s.localizacao,
-			tipo: s.tipo,
+function montarCardsSensores(sensores) {
+	return sensores.map((sensor) => {
+		const card = {
+			codigo: sensor.codigo,
+			nome: sensor.nome,
+			localizacao: sensor.localizacao,
+			tipo: sensor.tipo,
 			status: "offline",
 			badge: "Offline",
 			valorHtml: "Sem leitura",
 			classe: "sensor-card offline"
 		};
 
-		if (s.tipo === "odor") {
-			const num = parseInt(s.codigo.replace(/\D/g, ""), 10);
-			const leituras = leiturasOdor.filter((o) => o.id_sensor === num);
-			const ultima = leituras.length ? leituras[leituras.length - 1] : null;
-			if (ultima) {
-				const critico = Number(ultima.h2s) >= Number(s.h2s_critico);
-				card.status = critico ? "alert" : "online";
-				card.badge = critico ? "Alerta" : "Online";
-				card.valorHtml = Number(ultima.h2s).toFixed(3) + ' <small>ppm H₂S</small>';
-				card.classe = "sensor-card " + card.status;
-			}
-		} else if (s.tipo === "nivel") {
-			const leituras = niveis.filter((n) => n.id_sensor === s.id && n.nivel_percentual != null);
-			const ultima = leituras.length ? leituras[leituras.length - 1] : null;
-			if (ultima) {
-				const critico = Number(ultima.nivel_percentual) >= Number(s.nivel_critico);
-				card.status = critico ? "alert" : "online";
-				card.badge = critico ? "Alerta" : "Online";
-				card.valorHtml = Number(ultima.nivel_percentual).toFixed(1) + " <small>%</small>";
-				card.classe = "sensor-card " + card.status;
-			}
-		} else if (s.tipo === "pressao") {
-			const leituras = pressoes.filter((p) => p.codigo === s.codigo);
-			const ultima = leituras.length ? leituras[leituras.length - 1] : null;
-			if (ultima) {
-				card.status = "online";
-				card.badge = "Online";
-				card.valorHtml = Number(ultima.pressao).toFixed(2) + " <small>bar</small>";
-				card.classe = "sensor-card online";
-			}
+		if (sensor.tipo === "odor" && sensor.ultimo_h2s != null) {
+			const critico = Number(sensor.ultimo_h2s) >= Number(sensor.h2s_critico);
+			card.status = critico ? "alert" : "online";
+			card.badge = critico ? "Alerta" : "Online";
+			card.valorHtml = Number(sensor.ultimo_h2s).toFixed(3) + " <small>ppm H₂S</small>";
+		} else if (sensor.tipo === "nivel" && sensor.ultimo_nivel != null) {
+			const critico = Number(sensor.ultimo_nivel) >= Number(sensor.nivel_critico);
+			card.status = critico ? "alert" : "online";
+			card.badge = critico ? "Alerta" : "Online";
+			card.valorHtml = Number(sensor.ultimo_nivel).toFixed(1) + " <small>%</small>";
+		} else if (sensor.tipo === "pressao" && sensor.ultima_pressao != null) {
+			card.status = "online";
+			card.badge = "Online";
+			card.valorHtml = Number(sensor.ultima_pressao).toFixed(2) + " <small>bar</small>";
 		}
 
-		cards.push(card);
-	}
-
-	return cards;
-}
-
-function montarGraficos(leiturasOdor, niveis, pressoes) {
-	const odor1 = leiturasOdor.filter((r) => r.id_sensor === 1);
-	const odor2 = leiturasOdor.filter((r) => r.id_sensor === 2);
-	const listaOdor = odor1.length ? odor1 : odor2.length ? odor2 : leiturasOdor;
-
-	const graficoOdor = {
-		labels: listaOdor.map((r) => formatarHora(r.data)),
-		values: listaOdor.map((r) => Number(r.h2s))
-	};
-
-	const niveisComValor = niveis.filter((n) => n.nivel_percentual != null);
-	const graficoNivel = {
-		labels: niveisComValor.map((n) => formatarHora(n.data)),
-		values: niveisComValor.map((n) => Number(n.nivel_percentual))
-	};
-
-	const graficoPressao = {
-		labels: pressoes.map((p) => formatarHora(p.data)),
-		values: pressoes.map((p) => Number(p.pressao))
-	};
-
-	const graficoTemp = {
-		labels: listaOdor.map((r) => formatarHora(r.data)),
-		temp: listaOdor.map((r) => Number(r.temperatura)),
-		umidade: listaOdor.map((r) => Number(r.umidade))
-	};
-
-	return { graficoOdor, graficoNivel, graficoPressao, graficoTemp };
+		if (card.status !== "offline") {
+			card.classe = "sensor-card " + card.status;
+		}
+		return card;
+	});
 }
 
 function formatarHora(data) {
-	const d = new Date(data);
-	return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+	const date = new Date(data);
+	return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function primeiraSerie(rows, valueField) {
+	const validRows = rows.filter((row) => row[valueField] != null);
+	if (!validRows.length) {
+		return [];
+	}
+	const codigo = validRows[0].codigo;
+	return validRows.filter((row) => row.codigo === codigo);
+}
+
+function montarGraficos(leiturasOdor, niveis, pressoes) {
+	const odor = primeiraSerie(leiturasOdor, "h2s");
+	const nivel = primeiraSerie(niveis, "nivel_percentual");
+	const pressao = primeiraSerie(pressoes, "pressao");
+
+	return {
+		graficoOdor: {
+			labels: odor.map((row) => formatarHora(row.data)),
+			values: odor.map((row) => Number(row.h2s))
+		},
+		graficoNivel: {
+			labels: nivel.map((row) => formatarHora(row.data)),
+			values: nivel.map((row) => Number(row.nivel_percentual))
+		},
+		graficoPressao: {
+			labels: pressao.map((row) => formatarHora(row.data)),
+			values: pressao.map((row) => Number(row.pressao))
+		},
+		graficoTemp: {
+			labels: odor.map((row) => formatarHora(row.data)),
+			temp: odor.map((row) => Number(row.temperatura)),
+			umidade: odor.map((row) => Number(row.umidade))
+		}
+	};
+}
+
+async function carregarDashboardCompleto() {
+	const dados = await repository.carregarDashboard();
+	return {
+		...dados,
+		cards: montarCardsSensores(dados.sensores),
+		graficos: montarGraficos(dados.leiturasOdor, dados.niveis, dados.pressoes)
+	};
 }
 
 router.get("/", wrap(async (req, res) => {
-	let sincronizados = 0;
+	let resumo = {
+		sensoresAtivos: 0,
+		alertasAbertos: 0,
+		ultimoNivel: null,
+		ultimoOdor: []
+	};
 	let avisoDb = null;
 
 	try {
-		await sql.connect(async (conn) => {
-			sincronizados = await sincronizarOdor(conn);
-		});
-	} catch (e) {
-		console.error("Sync:", e.message);
-		avisoDb = "Não foi possível sincronizar com a API. Dados locais serão exibidos.";
-	}
-
-	let resumo = { sensoresAtivos: 0, alertasAbertos: 0, ultimoNivel: null, ultimoOdor: [] };
-	try {
-		resumo = await carregarResumo();
-	} catch (e) {
-		avisoDb = "Erro ao conectar no MySQL. Verifique o .env e execute o script.sql.";
+		resumo = await repository.carregarResumo();
+		sincronizarOdorEmSegundoPlano();
+	} catch (error) {
+		logDatabaseError("resumo", error);
+		avisoDb = DB_MESSAGE;
 	}
 
 	res.render("index/index", {
 		titulo: "Início",
 		usuario: "Operador",
 		resumo,
-		sincronizados,
+		sincronizados: 0,
 		avisoDb
 	});
 }));
 
 router.get("/dashboard", wrap(async (req, res) => {
-	const dados = await sql.connect(async (conn) => {
-		try {
-			await sincronizarOdor(conn);
-		} catch (e) {
-			console.error("Sync:", e.message);
-		}
+	let dados = emptyDashboard();
+	let avisoDb = null;
 
-		const sensores = await conn.query("SELECT * FROM sensor WHERE ativo = 1 ORDER BY codigo");
-
-		const leiturasOdor = await conn.query(
-			`SELECT o.* FROM odor o
-			 WHERE o.data >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-			 ORDER BY o.data ASC`
-		);
-
-		const niveis = await conn.query(
-			`SELECT n.*, s.codigo, s.nivel_critico
-			 FROM nivel_esgoto n
-			 INNER JOIN sensor s ON s.id = n.id_sensor
-			 WHERE n.data >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-			 ORDER BY n.data ASC`
-		);
-
-		const pressoes = await conn.query(
-			`SELECT n.data, n.pressao, s.codigo, s.id AS id_sensor
-			 FROM nivel_esgoto n
-			 INNER JOIN sensor s ON s.id = n.id_sensor
-			 WHERE s.tipo = 'pressao' AND n.pressao IS NOT NULL
-			 ORDER BY n.data ASC`
-		);
-
-		const alertas = await conn.query(
-			`SELECT a.*, s.codigo, s.nome
-			 FROM alerta a
-			 INNER JOIN sensor s ON s.id = a.id_sensor
-			 WHERE a.resolvido = 0
-			 ORDER BY a.data DESC
-			 LIMIT 20`
-		);
-
-		const cards = montarCardsSensores(sensores, leiturasOdor, niveis, pressoes);
-		const graficos = montarGraficos(leiturasOdor, niveis, pressoes);
-
-		return { sensores, leiturasOdor, niveis, pressoes, alertas, cards, graficos };
-	});
+	try {
+		dados = await carregarDashboardCompleto();
+		sincronizarOdorEmSegundoPlano();
+	} catch (error) {
+		logDatabaseError("dashboard", error);
+		avisoDb = DB_MESSAGE;
+	}
 
 	res.render("index/dashboard", {
 		titulo: "Dashboard",
-		alertas: dados.alertas || [],
-		cards: dados.cards || [],
+		alertas: dados.alertas,
+		cards: dados.cards,
 		graficos: dados.graficos,
-		atualizadoEm: new Date()
+		atualizadoEm: new Date(),
+		avisoDb
 	});
 }));
 
 router.get("/sensores", wrap(async (req, res) => {
-	const sensores = await sql.connect((conn) => conn.query("SELECT * FROM sensor ORDER BY codigo"));
+	let sensores = [];
+	let erro = req.query.erro || null;
+
+	try {
+		sensores = await repository.listarSensores();
+	} catch (error) {
+		logDatabaseError("sensores", error);
+		erro = DB_MESSAGE;
+	}
 
 	res.render("index/produtos", {
 		titulo: "Sensores",
 		produtos: sensores,
 		mensagem: req.query.ok ? "Sensor salvo com sucesso." : null,
-		erro: req.query.erro || null
+		erro
 	});
 }));
 
@@ -300,123 +336,188 @@ router.get("/sensores/novo", wrap(async (req, res) => {
 }));
 
 router.post("/sensores/novo", wrap(async (req, res) => {
-	const { codigo, nome, tipo, localizacao, nivel_critico, h2s_critico, nh3_critico } = req.body;
-
+	const { codigo, nome, tipo, localizacao } = req.body;
 	if (!codigo || !nome || !tipo || !localizacao) {
-		return res.redirect("/sensores/novo?erro=Preencha todos os campos obrigatórios");
+		return res.redirect("/sensores/novo?erro=" + encodeURIComponent("Preencha todos os campos obrigatórios"));
+	}
+	if (!["odor", "nivel", "pressao"].includes(tipo)) {
+		return res.redirect("/sensores/novo?erro=" + encodeURIComponent("Tipo de sensor inválido"));
 	}
 
 	try {
-		await sql.connect(async (conn) => {
-			await conn.query(
-				`INSERT INTO sensor (codigo, nome, tipo, localizacao, nivel_critico, h2s_critico, nh3_critico, ativo)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-				[codigo.trim(), nome.trim(), tipo, localizacao.trim(),
-					parseFloat(nivel_critico) || 80,
-					parseFloat(h2s_critico) || 0.05,
-					parseFloat(nh3_critico) || 0.03]
-			);
+		await repository.criarSensor({
+			codigo: codigo.trim(),
+			nome: nome.trim(),
+			tipo,
+			localizacao: localizacao.trim(),
+			nivel_critico: parseNumberOrDefault(req.body.nivel_critico, 80),
+			h2s_critico: parseNumberOrDefault(req.body.h2s_critico, 0.05),
+			nh3_critico: parseNumberOrDefault(req.body.nh3_critico, 0.03)
 		});
 		res.redirect("/sensores?ok=1");
-	} catch (e) {
-		res.redirect("/sensores/novo?erro=" + encodeURIComponent(e.message));
+	} catch (error) {
+		logDatabaseError("novo sensor", error);
+		const message = error.code === "ER_DUP_ENTRY"
+			? "Já existe um sensor com esse código."
+			: "Não foi possível salvar o sensor no MySQL.";
+		res.redirect("/sensores/novo?erro=" + encodeURIComponent(message));
 	}
 }));
 
 router.post("/sensores/:id/excluir", wrap(async (req, res) => {
-	await sql.connect(async (conn) => {
-		await conn.query("UPDATE sensor SET ativo = 0 WHERE id = ?", [parseInt(req.params.id, 10)]);
-	});
-	res.redirect("/sensores?ok=1");
+	const id = parseId(req.params.id);
+	if (!id) {
+		return res.redirect("/sensores?erro=" + encodeURIComponent("Sensor inválido"));
+	}
+
+	try {
+		await repository.desativarSensor(id);
+		res.redirect("/sensores?ok=1");
+	} catch (error) {
+		logDatabaseError("desativar sensor", error);
+		res.redirect("/sensores?erro=" + encodeURIComponent("Não foi possível desativar o sensor."));
+	}
 }));
 
 router.get("/niveis", wrap(async (req, res) => {
-	const dados = await sql.connect(async (conn) => {
-		const sensores = await conn.query(
-			"SELECT id, codigo, nome, tipo FROM sensor WHERE tipo IN ('nivel', 'pressao') AND ativo = 1 ORDER BY codigo"
-		);
-		const niveis = await conn.query(
-			`SELECT n.*, s.codigo, s.nome, s.nivel_critico, s.tipo
-			 FROM nivel_esgoto n
-			 INNER JOIN sensor s ON s.id = n.id_sensor
-			 ORDER BY n.data DESC
-			 LIMIT 50`
-		);
-		return { sensores, niveis };
-	});
+	let dados = { sensores: [], niveis: [] };
+	let erro = req.query.erro || null;
+
+	try {
+		dados = await repository.carregarNiveis();
+	} catch (error) {
+		logDatabaseError("níveis", error);
+		erro = DB_MESSAGE;
+	}
 
 	res.render("index/teste2", {
 		titulo: "Níveis de Esgoto",
-		sensores: dados.sensores || [],
-		niveis: dados.niveis || [],
+		sensores: dados.sensores,
+		niveis: dados.niveis,
 		mensagem: req.query.ok ? "Leitura registrada." : null,
-		erro: req.query.erro || null
+		erro
 	});
 }));
 
 router.post("/niveis", wrap(async (req, res) => {
-	const { id_sensor, nivel_percentual, vazao, pressao } = req.body;
+	const idSensor = parseId(req.body.id_sensor);
+	const nivel = parseOptionalNumber(req.body.nivel_percentual);
+	const vazao = parseOptionalNumber(req.body.vazao);
+	const pressao = parseOptionalNumber(req.body.pressao);
 
-	if (!id_sensor) {
+	if (!idSensor) {
 		return res.redirect("/niveis?erro=" + encodeURIComponent("Selecione um sensor"));
 	}
-
-	const nivel = nivel_percentual !== "" && nivel_percentual != null ? parseFloat(nivel_percentual) : null;
-	const vaz = vazao !== "" && vazao != null ? parseFloat(vazao) : null;
-	const press = pressao !== "" && pressao != null ? parseFloat(pressao) : null;
-
-	if (nivel === null && press === null) {
+	if ([nivel, vazao, pressao].some(Number.isNaN)) {
+		return res.redirect("/niveis?erro=" + encodeURIComponent("Informe apenas valores numéricos válidos"));
+	}
+	if (nivel === null && pressao === null) {
 		return res.redirect("/niveis?erro=" + encodeURIComponent("Informe nível (%) ou pressão (bar)"));
 	}
+	if (nivel !== null && (nivel < 0 || nivel > 100)) {
+		return res.redirect("/niveis?erro=" + encodeURIComponent("O nível deve estar entre 0 e 100%"));
+	}
 
-	await sql.connect(async (conn) => {
-		const sensor = (await conn.query("SELECT * FROM sensor WHERE id = ?", [parseInt(id_sensor, 10)]))[0];
-		if (!sensor) {
-			throw new Error("Sensor não encontrado");
-		}
-
-		await conn.query(
-			"INSERT INTO nivel_esgoto (id_sensor, data, nivel_percentual, vazao, pressao) VALUES (?, NOW(), ?, ?, ?)",
-			[parseInt(id_sensor, 10), nivel, vaz, press]
-		);
-
-		if (nivel !== null && nivel >= Number(sensor.nivel_critico)) {
-			await conn.query(
-				"INSERT INTO alerta (id_sensor, tipo, mensagem, severidade) VALUES (?, 'nivel_critico', ?, 'alta')",
-				[sensor.id, "Nivel critico em " + sensor.codigo + ": " + nivel + "%"]
-			);
-		}
-	});
-
-	res.redirect("/niveis?ok=1");
+	try {
+		await repository.registrarNivel({
+			id_sensor: idSensor,
+			nivel_percentual: nivel,
+			vazao,
+			pressao
+		});
+		res.redirect("/niveis?ok=1");
+	} catch (error) {
+		logDatabaseError("registrar nível", error);
+		const message = error.code === "SENSOR_INVALIDO"
+			? error.message
+			: "Não foi possível registrar a leitura no MySQL.";
+		res.redirect("/niveis?erro=" + encodeURIComponent(message));
+	}
 }));
 
 router.get("/alertas", wrap(async (req, res) => {
-	const alertas = await sql.connect(async (conn) => {
-		return conn.query(
-			`SELECT a.*, s.codigo, s.nome, s.localizacao
-			 FROM alerta a
-			 INNER JOIN sensor s ON s.id = a.id_sensor
-			 ORDER BY a.resolvido ASC, a.data DESC
-			 LIMIT 100`
-		);
-	});
+	let alertas = [];
+	let erro = req.query.erro || null;
+
+	try {
+		alertas = await repository.listarAlertas();
+	} catch (error) {
+		logDatabaseError("alertas", error);
+		erro = DB_MESSAGE;
+	}
 
 	res.render("index/teste3", {
 		titulo: "Alertas",
-		alertas: alertas || [],
-		mensagem: req.query.ok ? "Alerta atualizado." : null
+		alertas,
+		mensagem: req.query.ok ? "Alerta atualizado." : null,
+		erro
 	});
 }));
 
 router.post("/alertas/:id/resolver", wrap(async (req, res) => {
-	await sql.connect(async (conn) => {
-		await conn.query(
-			"UPDATE alerta SET resolvido = 1, resolvido_em = NOW() WHERE id = ?",
-			[parseInt(req.params.id, 10)]
-		);
-	});
-	res.redirect("/alertas?ok=1");
+	const id = parseId(req.params.id);
+	if (!id) {
+		return res.redirect("/alertas?erro=" + encodeURIComponent("Alerta inválido"));
+	}
+
+	try {
+		await repository.resolverAlerta(id);
+		res.redirect("/alertas?ok=1");
+	} catch (error) {
+		logDatabaseError("resolver alerta", error);
+		res.redirect("/alertas?erro=" + encodeURIComponent("Não foi possível atualizar o alerta."));
+	}
+}));
+
+router.get("/api/resumo", wrap(async (req, res) => {
+	try {
+		res.json(await repository.carregarResumo());
+	} catch (error) {
+		logDatabaseError("api/resumo", error);
+		res.status(503).json({
+			erro: DB_MESSAGE,
+			sensoresAtivos: 0,
+			alertasAbertos: 0,
+			ultimoNivel: null,
+			ultimoOdor: []
+		});
+	}
+}));
+
+router.get("/api/dashboard", wrap(async (req, res) => {
+	try {
+		res.json(await carregarDashboardCompleto());
+	} catch (error) {
+		logDatabaseError("api/dashboard", error);
+		res.status(503).json({ erro: DB_MESSAGE, ...emptyDashboard() });
+	}
+}));
+
+router.get("/api/sensores", wrap(async (req, res) => {
+	try {
+		res.json(await repository.listarSensores());
+	} catch (error) {
+		logDatabaseError("api/sensores", error);
+		res.status(503).json({ erro: DB_MESSAGE, sensores: [] });
+	}
+}));
+
+router.get("/api/niveis", wrap(async (req, res) => {
+	try {
+		res.json(await repository.carregarNiveis());
+	} catch (error) {
+		logDatabaseError("api/niveis", error);
+		res.status(503).json({ erro: DB_MESSAGE, sensores: [], niveis: [] });
+	}
+}));
+
+router.get("/api/alertas", wrap(async (req, res) => {
+	try {
+		res.json(await repository.listarAlertas());
+	} catch (error) {
+		logDatabaseError("api/alertas", error);
+		res.status(503).json({ erro: DB_MESSAGE, alertas: [] });
+	}
 }));
 
 module.exports = router;
