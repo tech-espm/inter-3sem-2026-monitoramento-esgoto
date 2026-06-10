@@ -22,6 +22,7 @@ const path = require("path");
 const wrap = require("express-async-error-wrapper");
 const cookieParser = require("cookie-parser"); // https://stackoverflow.com/a/16209531/3569421
 const sql = require("./data/sql");
+const { getDatabaseConfig, positiveInteger } = require("./data/db-config");
 const { ensureSchema } = require("./data/init-db");
 
 require("dotenv").config({ encoding: "utf8" });
@@ -58,6 +59,20 @@ app.disable("etag");
 // Explica para o express qual será o diretório de onde serviremos os
 // arquivos estáticos (js, css, imagens etc...)
 app.use("/public", express.static(path.join(__dirname, "public"), {
+	cacheControl: true,
+	etag: false,
+	maxAge: "30d"
+}));
+app.use("/img", express.static(path.join(__dirname, "public", "img"), {
+	cacheControl: true,
+	etag: false,
+	maxAge: "30d",
+	setHeaders: (res, filePath) => {
+		if (filePath.toLowerCase().endsWith(".jfif"))
+			res.type("image/jpeg");
+	}
+}));
+app.use("/vendor/chart.js", express.static(path.join(__dirname, "node_modules", "chart.js", "dist"), {
 	cacheControl: true,
 	etag: false,
 	maxAge: "30d"
@@ -128,19 +143,16 @@ app.use((err, req, res, next) => {
 	});
 });
 
-sql.init({
-	connectionLimit: parseInt(process.env.sql_connectionLimit),
-	waitForConnections: !!parseInt(process.env.sql_waitForConnections),
-	charset: process.env.sql_charset,
-	host: process.env.sql_host,
-	port: parseInt(process.env.sql_port),
-	user: process.env.sql_user,
-	password: process.env.sql_password,
-	database: process.env.sql_database
-});
+const database = getDatabaseConfig(process.env);
+if (!database.missing.length) {
+	sql.init(database.config);
+} else {
+	console.error("Aviso: configuração MySQL incompleta.");
+	console.error("Variáveis obrigatórias ausentes: " + database.missing.join(", "));
+}
 
 const ip = process.env.IP || "127.0.0.1";
-const porta = parseInt(process.env.PORT) || 3000;
+const porta = positiveInteger(process.env.PORT, 3000);
 
 function iniciarServidor() {
 	app.listen(porta, ip, () => {
@@ -148,10 +160,22 @@ function iniciarServidor() {
 	});
 }
 
-ensureSchema()
+function mensagemErro(error) {
+	if (error && error.message)
+		return error.message;
+	if (error && Array.isArray(error.errors) && error.errors.length)
+		return error.errors.map(mensagemErro).filter(Boolean).join("; ");
+	if (error && error.code)
+		return error.code;
+	return "Falha de conexão com o MySQL";
+}
+
+(database.missing.length
+	? Promise.reject(new Error("Configuração MySQL incompleta"))
+	: ensureSchema())
 	.then(iniciarServidor)
 	.catch((err) => {
-		console.error("Aviso: banco não inicializado —", err.message);
+		console.error("Aviso: banco não inicializado —", mensagemErro(err));
 		console.error("Confira MySQL, .env e execute: mysql -u root -p < script.sql");
 		iniciarServidor();
 	});
