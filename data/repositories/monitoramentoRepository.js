@@ -1,102 +1,249 @@
 const sql = require("../sql");
 
-async function carregarResumo() {
-	return sql.connect(async (conn) => {
-		const sensoresAtivos = await conn.scalar(
-			"SELECT COUNT(*) FROM sensor WHERE ativo = 1"
-		) || 0;
-		const alertasAbertos = await conn.scalar(
-			"SELECT COUNT(*) FROM alerta WHERE resolvido = 0"
-		) || 0;
-		const ultimoNivel = await conn.query(
-			`SELECT n.nivel_percentual, n.data, s.codigo
-			 FROM nivel_esgoto n
-			 INNER JOIN sensor s ON s.id = n.id_sensor
-			 WHERE s.tipo = 'nivel' AND n.nivel_percentual IS NOT NULL
-			 ORDER BY n.data DESC, n.id DESC
-			 LIMIT 1`
-		);
-		const ultimoOdor = await conn.query(
-			`SELECT o.h2s, o.data, o.id_sensor, o.bateria, s.codigo
-			 FROM odor o
-			 INNER JOIN sensor s ON s.id = o.id_sensor
-			 ORDER BY o.data DESC, o.id DESC
-			 LIMIT 2`
-		);
+async function consultarResumo(conn) {
+	const totalSensores = await conn.scalar(
+		"SELECT COUNT(*) FROM sensor"
+	) || 0;
+	const sensoresAtivos = await conn.scalar(
+		"SELECT COUNT(*) FROM sensor WHERE ativo = 1"
+	) || 0;
+	const alertasAbertos = await conn.scalar(
+		"SELECT COUNT(*) FROM alerta WHERE resolvido = 0"
+	) || 0;
+	const ultimoNivel = await conn.query(
+		`SELECT n.nivel_percentual, n.data, s.codigo
+		 FROM nivel_esgoto n
+		 INNER JOIN sensor s ON s.id = n.id_sensor
+		 WHERE s.tipo = 'nivel'
+		   AND s.ativo = 1
+		   AND n.nivel_percentual IS NOT NULL
+		 ORDER BY n.data DESC, n.id DESC
+		 LIMIT 1`
+	);
+	const ultimoOdor = await conn.query(
+		`SELECT o.h2s, o.data, o.id_sensor, o.bateria, s.codigo
+		 FROM odor o
+		 INNER JOIN sensor s ON s.id = o.id_sensor
+		 WHERE s.tipo = 'odor' AND s.ativo = 1
+		 ORDER BY o.data DESC, o.id DESC
+		 LIMIT 2`
+	);
 
-		return {
-			sensoresAtivos: Number(sensoresAtivos),
-			alertasAbertos: Number(alertasAbertos),
-			ultimoNivel: ultimoNivel[0] || null,
-			ultimoOdor
-		};
-	});
+	return {
+		totalSensores: Number(totalSensores),
+		sensoresAtivos: Number(sensoresAtivos),
+		alertasAbertos: Number(alertasAbertos),
+		ultimoNivel: ultimoNivel[0] || null,
+		ultimoOdor
+	};
+}
+
+async function consultarDashboard(conn) {
+	const sensores = await conn.query(
+		`SELECT s.*,
+			o.data AS odor_data,
+			o.h2s AS ultimo_h2s,
+			o.nh3 AS ultimo_nh3,
+			o.bateria AS odor_bateria,
+			n.data AS nivel_data,
+			n.nivel_percentual AS ultimo_nivel,
+			n.pressao AS ultima_pressao
+		 FROM sensor s
+		 LEFT JOIN odor o ON o.id = (
+			SELECT o2.id
+			FROM odor o2
+			WHERE o2.id_sensor = s.id
+			ORDER BY o2.data DESC, o2.id DESC
+			LIMIT 1
+		 )
+		 LEFT JOIN nivel_esgoto n ON n.id = (
+			SELECT n2.id
+			FROM nivel_esgoto n2
+			WHERE n2.id_sensor = s.id
+			  AND (
+				(s.tipo = 'nivel' AND n2.nivel_percentual IS NOT NULL)
+				OR (s.tipo = 'pressao' AND n2.pressao IS NOT NULL)
+			  )
+			ORDER BY n2.data DESC, n2.id DESC
+			LIMIT 1
+		 )
+		 WHERE s.ativo = 1
+		 ORDER BY s.codigo`
+	);
+	const leiturasOdor = await conn.query(
+		`SELECT o.*, s.codigo
+		 FROM odor o
+		 INNER JOIN sensor s ON s.id = o.id_sensor
+		 WHERE s.tipo = 'odor'
+		   AND s.ativo = 1
+		   AND o.data >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+		 ORDER BY s.codigo, o.data ASC, o.id ASC`
+	);
+	let niveis = await conn.query(
+		`SELECT n.*, s.codigo, s.nivel_critico
+		 FROM nivel_esgoto n
+		 INNER JOIN sensor s ON s.id = n.id_sensor
+		 WHERE s.tipo = 'nivel'
+		   AND s.ativo = 1
+		   AND n.nivel_percentual IS NOT NULL
+		   AND n.data >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+		 ORDER BY s.codigo, n.data ASC, n.id ASC`
+	);
+	if (!niveis.length) {
+		niveis = await conn.query(
+			`SELECT *
+			 FROM (
+				SELECT n.*, s.codigo, s.nivel_critico
+				FROM nivel_esgoto n
+				INNER JOIN sensor s ON s.id = n.id_sensor
+				WHERE s.tipo = 'nivel'
+				  AND s.ativo = 1
+				  AND n.nivel_percentual IS NOT NULL
+				ORDER BY n.data DESC, n.id DESC
+				LIMIT 20
+			 ) leituras
+			 ORDER BY data ASC, id ASC`
+		);
+	}
+	let pressoes = await conn.query(
+		`SELECT n.data, n.pressao, s.codigo, s.id AS id_sensor
+		 FROM nivel_esgoto n
+		 INNER JOIN sensor s ON s.id = n.id_sensor
+		 WHERE s.tipo = 'pressao'
+		   AND s.ativo = 1
+		   AND n.pressao IS NOT NULL
+		   AND n.data >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
+		 ORDER BY s.codigo, n.data ASC, n.id ASC`
+	);
+	if (!pressoes.length) {
+		pressoes = await conn.query(
+			`SELECT *
+			 FROM (
+				SELECT n.data, n.pressao, s.codigo, s.id AS id_sensor, n.id
+				FROM nivel_esgoto n
+				INNER JOIN sensor s ON s.id = n.id_sensor
+				WHERE s.tipo = 'pressao'
+				  AND s.ativo = 1
+				  AND n.pressao IS NOT NULL
+				ORDER BY n.data DESC, n.id DESC
+				LIMIT 20
+			 ) leituras
+			 ORDER BY data ASC, id ASC`
+		);
+	}
+	const alertas = await conn.query(
+		`SELECT a.*, s.codigo, s.nome
+		 FROM alerta a
+		 INNER JOIN sensor s ON s.id = a.id_sensor
+		 WHERE a.resolvido = 0
+		 ORDER BY a.data DESC, a.id DESC
+		 LIMIT 20`
+	);
+	const ultimasLeiturasNivel = await conn.query(
+		`SELECT n.*, s.codigo, s.nome, s.tipo
+		 FROM nivel_esgoto n
+		 INNER JOIN sensor s ON s.id = n.id_sensor
+		 WHERE s.ativo = 1
+		   AND s.tipo IN ('nivel', 'pressao')
+		   AND n.id = (
+			SELECT n2.id
+			FROM nivel_esgoto n2
+			WHERE n2.id_sensor = s.id
+			  AND (
+				(s.tipo = 'nivel' AND n2.nivel_percentual IS NOT NULL)
+				OR (s.tipo = 'pressao' AND n2.pressao IS NOT NULL)
+			  )
+			ORDER BY n2.data DESC, n2.id DESC
+			LIMIT 1
+		   )
+		 ORDER BY s.codigo`
+	);
+	const ultimasLeiturasOdor = await conn.query(
+		`SELECT o.*, s.codigo, s.nome
+		 FROM odor o
+		 INNER JOIN sensor s ON s.id = o.id_sensor
+		 WHERE s.ativo = 1
+		   AND s.tipo = 'odor'
+		   AND o.id = (
+			SELECT o2.id
+			FROM odor o2
+			WHERE o2.id_sensor = s.id
+			ORDER BY o2.data DESC, o2.id DESC
+			LIMIT 1
+		   )
+		 ORDER BY s.codigo`
+	);
+
+	return {
+		sensores,
+		leiturasOdor,
+		niveis,
+		pressoes,
+		alertas,
+		ultimasLeiturasNivel,
+		ultimasLeiturasOdor
+	};
+}
+
+async function carregarResumo() {
+	return sql.connect(consultarResumo);
 }
 
 async function carregarDashboard() {
+	return sql.connect(consultarDashboard);
+}
+
+async function carregarDashboardDebug() {
 	return sql.connect(async (conn) => {
-		const sensores = await conn.query(
-			`SELECT s.*,
-				o.data AS odor_data,
-				o.h2s AS ultimo_h2s,
-				o.nh3 AS ultimo_nh3,
-				o.bateria AS odor_bateria,
-				n.data AS nivel_data,
-				n.nivel_percentual AS ultimo_nivel,
-				n.pressao AS ultima_pressao
-			 FROM sensor s
-			 LEFT JOIN odor o ON o.id = (
-				SELECT o2.id
-				FROM odor o2
-				WHERE o2.id_sensor = s.id
-				ORDER BY o2.data DESC, o2.id DESC
-				LIMIT 1
-			 )
-			 LEFT JOIN nivel_esgoto n ON n.id = (
-				SELECT n2.id
-				FROM nivel_esgoto n2
-				WHERE n2.id_sensor = s.id
-				ORDER BY n2.data DESC, n2.id DESC
-				LIMIT 1
-			 )
-			 WHERE s.ativo = 1
-			 ORDER BY s.codigo`
+		const resumo = await consultarResumo(conn);
+		const dashboard = await consultarDashboard(conn);
+		const totalSensores = await conn.scalar(
+			"SELECT COUNT(*) AS total_sensores FROM sensor"
+		) || 0;
+		const sensoresAtivos = await conn.scalar(
+			"SELECT COUNT(*) AS sensores_ativos FROM sensor WHERE ativo = 1"
+		) || 0;
+		const sensoresInativos = await conn.scalar(
+			"SELECT COUNT(*) AS sensores_inativos FROM sensor WHERE ativo = 0"
+		) || 0;
+		const alertasAbertos = await conn.scalar(
+			"SELECT COUNT(*) AS alertas_abertos FROM alerta WHERE resolvido = 0"
+		) || 0;
+		const sensoresRecentes = await conn.query(
+			"SELECT * FROM sensor ORDER BY id DESC LIMIT 20"
 		);
-		const leiturasOdor = await conn.query(
-			`SELECT o.*, s.codigo
-			 FROM odor o
-			 INNER JOIN sensor s ON s.id = o.id_sensor
-			 WHERE o.data >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-			 ORDER BY s.codigo, o.data ASC, o.id ASC`
+		const niveisRecentes = await conn.query(
+			"SELECT * FROM nivel_esgoto ORDER BY data DESC LIMIT 20"
 		);
-		const niveis = await conn.query(
-			`SELECT n.*, s.codigo, s.nivel_critico
-			 FROM nivel_esgoto n
-			 INNER JOIN sensor s ON s.id = n.id_sensor
-			 WHERE s.tipo = 'nivel'
-			   AND n.nivel_percentual IS NOT NULL
-			   AND n.data >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-			 ORDER BY s.codigo, n.data ASC, n.id ASC`
+		const odoresRecentes = await conn.query(
+			"SELECT * FROM odor ORDER BY data DESC LIMIT 20"
 		);
-		const pressoes = await conn.query(
-			`SELECT n.data, n.pressao, s.codigo, s.id AS id_sensor
-			 FROM nivel_esgoto n
-			 INNER JOIN sensor s ON s.id = n.id_sensor
-			 WHERE s.tipo = 'pressao'
-			   AND n.pressao IS NOT NULL
-			   AND n.data >= DATE_SUB(NOW(), INTERVAL 48 HOUR)
-			 ORDER BY s.codigo, n.data ASC, n.id ASC`
-		);
-		const alertas = await conn.query(
-			`SELECT a.*, s.codigo, s.nome
-			 FROM alerta a
-			 INNER JOIN sensor s ON s.id = a.id_sensor
-			 WHERE a.resolvido = 0
-			 ORDER BY a.data DESC, a.id DESC
-			 LIMIT 20`
+		const alertasRecentes = await conn.query(
+			"SELECT * FROM alerta ORDER BY data DESC LIMIT 20"
 		);
 
-		return { sensores, leiturasOdor, niveis, pressoes, alertas };
+		return {
+			resumo,
+			sensores: dashboard.sensores,
+			ultimasLeiturasNivel: dashboard.ultimasLeiturasNivel,
+			ultimasLeiturasOdor: dashboard.ultimasLeiturasOdor,
+			alertasRecentes: dashboard.alertas,
+			dadosGraficos: {
+				odor: dashboard.leiturasOdor,
+				nivel: dashboard.niveis,
+				pressao: dashboard.pressoes
+			},
+			consultasVerificacao: {
+				total_sensores: Number(totalSensores),
+				sensores_ativos: Number(sensoresAtivos),
+				sensores_inativos: Number(sensoresInativos),
+				alertas_abertos: Number(alertasAbertos),
+				sensores: sensoresRecentes,
+				niveis: niveisRecentes,
+				odor: odoresRecentes,
+				alertas: alertasRecentes
+			}
+		};
 	});
 }
 
@@ -125,10 +272,22 @@ async function criarSensor(sensor) {
 	);
 }
 
+async function atualizarStatusSensor(id, ativo) {
+	return sql.connect(async (conn) => {
+		await conn.query(
+			"UPDATE sensor SET ativo = ? WHERE id = ?",
+			[ativo ? 1 : 0, id]
+		);
+		return conn.affectedRows > 0;
+	});
+}
+
 async function desativarSensor(id) {
-	return sql.connect((conn) =>
-		conn.query("UPDATE sensor SET ativo = 0 WHERE id = ?", [id])
-	);
+	return atualizarStatusSensor(id, false);
+}
+
+async function reativarSensor(id) {
+	return atualizarStatusSensor(id, true);
 }
 
 async function carregarNiveis() {
@@ -233,9 +392,11 @@ async function resolverAlerta(id) {
 module.exports = {
 	carregarResumo,
 	carregarDashboard,
+	carregarDashboardDebug,
 	listarSensores,
 	criarSensor,
 	desativarSensor,
+	reativarSensor,
 	carregarNiveis,
 	registrarNivel,
 	listarAlertas,

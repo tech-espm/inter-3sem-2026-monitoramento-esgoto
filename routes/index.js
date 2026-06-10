@@ -6,6 +6,7 @@ const repository = require("../data/repositories/monitoramentoRepository");
 
 const router = express.Router();
 const DB_MESSAGE = "Não foi possível consultar o MySQL. Verifique a conexão e tente novamente.";
+const IS_DEVELOPMENT = (process.env.NODE_ENV || "development") === "development";
 
 function pad2(value) {
 	return String(value).padStart(2, "0");
@@ -49,8 +50,41 @@ function emptyDashboard() {
 		niveis: [],
 		pressoes: [],
 		alertas: [],
+		ultimasLeiturasNivel: [],
+		ultimasLeiturasOdor: [],
 		cards: [],
 		graficos: emptyGraphs()
+	};
+}
+
+function emptyDashboardDebug() {
+	return {
+		resumo: {
+			totalSensores: 0,
+			sensoresAtivos: 0,
+			alertasAbertos: 0,
+			ultimoNivel: null,
+			ultimoOdor: []
+		},
+		sensores: [],
+		ultimasLeiturasNivel: [],
+		ultimasLeiturasOdor: [],
+		alertasRecentes: [],
+		dadosGraficos: {
+			odor: [],
+			nivel: [],
+			pressao: []
+		},
+		consultasVerificacao: {
+			total_sensores: 0,
+			sensores_ativos: 0,
+			sensores_inativos: 0,
+			alertas_abertos: 0,
+			sensores: [],
+			niveis: [],
+			odor: [],
+			alertas: []
+		}
 	};
 }
 
@@ -63,6 +97,21 @@ function logDatabaseError(context, error) {
 			.join("; ");
 	}
 	console.error("[DB][" + context + "]", message || (error && error.code) || "Falha de conexão com o MySQL");
+}
+
+function logDashboardDevelopment(dados) {
+	if (!IS_DEVELOPMENT) {
+		return;
+	}
+
+	console.log(
+		"[Dashboard DB] sensores=%d, odor48h=%d, niveis48h=%d, pressoes48h=%d, alertasAbertos=%d",
+		dados.sensores.length,
+		dados.leiturasOdor.length,
+		dados.niveis.length,
+		dados.pressoes.length,
+		dados.alertas.length
+	);
 }
 
 async function gerarAlertasOdor(conn, sensor, leitura) {
@@ -221,7 +270,16 @@ function primeiraSerie(rows, valueField) {
 	if (!validRows.length) {
 		return [];
 	}
-	const codigo = validRows[0].codigo;
+
+	let codigo = validRows[0].codigo;
+	let dataMaisRecente = new Date(validRows[0].data).getTime();
+	for (const row of validRows) {
+		const rowTime = new Date(row.data).getTime();
+		if (rowTime > dataMaisRecente) {
+			codigo = row.codigo;
+			dataMaisRecente = rowTime;
+		}
+	}
 	return validRows.filter((row) => row.codigo === codigo);
 }
 
@@ -262,6 +320,7 @@ async function carregarDashboardCompleto() {
 
 router.get("/", wrap(async (req, res) => {
 	let resumo = {
+		totalSensores: 0,
 		sensoresAtivos: 0,
 		alertasAbertos: 0,
 		ultimoNivel: null,
@@ -292,6 +351,7 @@ router.get("/dashboard", wrap(async (req, res) => {
 
 	try {
 		dados = await carregarDashboardCompleto();
+		logDashboardDevelopment(dados);
 		sincronizarOdorEmSegundoPlano();
 	} catch (error) {
 		logDatabaseError("dashboard", error);
@@ -376,6 +436,24 @@ router.post("/sensores/:id/excluir", wrap(async (req, res) => {
 	} catch (error) {
 		logDatabaseError("desativar sensor", error);
 		res.redirect("/sensores?erro=" + encodeURIComponent("Não foi possível desativar o sensor."));
+	}
+}));
+
+router.post("/sensores/:id/reativar", wrap(async (req, res) => {
+	const id = parseId(req.params.id);
+	if (!id) {
+		return res.redirect("/sensores?erro=" + encodeURIComponent("Sensor inválido"));
+	}
+
+	try {
+		const encontrado = await repository.reativarSensor(id);
+		if (!encontrado) {
+			return res.redirect("/sensores?erro=" + encodeURIComponent("Sensor não encontrado"));
+		}
+		res.redirect("/sensores?ok=1");
+	} catch (error) {
+		logDatabaseError("reativar sensor", error);
+		res.redirect("/sensores?erro=" + encodeURIComponent("Não foi possível reativar o sensor."));
 	}
 }));
 
@@ -476,6 +554,7 @@ router.get("/api/resumo", wrap(async (req, res) => {
 		logDatabaseError("api/resumo", error);
 		res.status(503).json({
 			erro: DB_MESSAGE,
+			totalSensores: 0,
 			sensoresAtivos: 0,
 			alertasAbertos: 0,
 			ultimoNivel: null,
@@ -493,12 +572,39 @@ router.get("/api/dashboard", wrap(async (req, res) => {
 	}
 }));
 
+router.get("/api/debug/dashboard-db", wrap(async (req, res) => {
+	try {
+		res.json(await repository.carregarDashboardDebug());
+	} catch (error) {
+		logDatabaseError("api/debug/dashboard-db", error);
+		res.status(503).json({ erro: DB_MESSAGE, ...emptyDashboardDebug() });
+	}
+}));
+
 router.get("/api/sensores", wrap(async (req, res) => {
 	try {
 		res.json(await repository.listarSensores());
 	} catch (error) {
 		logDatabaseError("api/sensores", error);
 		res.status(503).json({ erro: DB_MESSAGE, sensores: [] });
+	}
+}));
+
+router.post("/api/sensores/:id/reativar", wrap(async (req, res) => {
+	const id = parseId(req.params.id);
+	if (!id) {
+		return res.status(400).json({ ok: false, erro: "Sensor inválido" });
+	}
+
+	try {
+		const encontrado = await repository.reativarSensor(id);
+		if (!encontrado) {
+			return res.status(404).json({ ok: false, erro: "Sensor não encontrado" });
+		}
+		res.json({ ok: true });
+	} catch (error) {
+		logDatabaseError("api reativar sensor", error);
+		res.status(503).json({ ok: false, erro: DB_MESSAGE });
 	}
 }));
 

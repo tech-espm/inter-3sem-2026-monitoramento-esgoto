@@ -61,7 +61,7 @@
 			<tbody>
 			<% for (var i = 0; i < resumo.ultimoOdor.length; i++) { %>
 				<tr>
-					<td><span class="tag">odor<%= String(resumo.ultimoOdor[i].id_sensor).padStart(2, "0") %></span></td>
+					<td><span class="tag"><%= resumo.ultimoOdor[i].codigo %></span></td>
 					<td><%= parseFloat(resumo.ultimoOdor[i].h2s).toFixed(3) %> ppm</td>
 					<td><%= resumo.ultimoOdor[i].bateria %>%</td>
 					<td><%= new Date(resumo.ultimoOdor[i].data).toLocaleString("pt-BR") %></td>

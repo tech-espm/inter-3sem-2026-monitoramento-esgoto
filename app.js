@@ -63,6 +63,11 @@ app.use("/public", express.static(path.join(__dirname, "public"), {
 	etag: false,
 	maxAge: "30d"
 }));
+app.use("/vendor/chart.js", express.static(path.join(__dirname, "node_modules", "chart.js", "dist"), {
+	cacheControl: true,
+	etag: false,
+	maxAge: "30d"
+}));
 
 app.use(cookieParser());
 

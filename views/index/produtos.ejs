@@ -40,6 +40,10 @@
 					<form method="post" action="/sensores/<%= s.id %>/excluir" style="display:inline" onsubmit="return confirm('Desativar este sensor?');">
 						<button type="submit" class="btn btn-danger btn-sm">Desativar</button>
 					</form>
+					<% } else { %>
+					<form method="post" action="/sensores/<%= s.id %>/reativar" style="display:inline">
+						<button type="submit" class="btn btn-primary btn-sm">Reativar</button>
+					</form>
 					<% } %>
 				</td>
 			</tr>

@@ -101,67 +101,106 @@
 (function () {
 	var graficos = <%- JSON.stringify(graficos || {}) %>;
 
-	function criarLinha(id, label, labels, values, cor) {
-		var el = document.getElementById(id);
-		if (!el || !labels.length) return;
-		new Chart(el, {
-			type: "line",
-			data: {
-				labels: labels,
-				datasets: [{
-					label: label,
-					data: values,
-					borderColor: cor,
-					backgroundColor: cor + "33",
-					fill: true,
-					tension: 0.35,
-					pointRadius: 3
-				}]
-			},
-			options: {
-				responsive: true,
-				maintainAspectRatio: false,
-				plugins: { legend: { labels: { color: "#94a3b8" } } },
-				scales: {
-					x: { ticks: { color: "#64748b" }, grid: { color: "#334155" } },
-					y: { beginAtZero: true, ticks: { color: "#64748b" }, grid: { color: "#334155" } }
-				}
-			}
-		});
-	}
-
-	if (graficos.graficoOdor) {
-		criarLinha("chart-odor", "H2S", graficos.graficoOdor.labels, graficos.graficoOdor.values, "#22d3ee");
-	}
-	if (graficos.graficoNivel) {
-		criarLinha("chart-nivel", "Nivel %", graficos.graficoNivel.labels, graficos.graficoNivel.values, "#4ade80");
-	}
-	if (graficos.graficoPressao) {
-		criarLinha("chart-pressao", "Pressao", graficos.graficoPressao.labels, graficos.graficoPressao.values, "#fbbf24");
-	}
-	if (graficos.graficoTemp && graficos.graficoTemp.labels.length) {
-		var elTemp = document.getElementById("chart-temp");
-		if (elTemp) {
-			new Chart(elTemp, {
+	function iniciarGraficos() {
+		function criarLinha(id, label, labels, values, cor) {
+			var el = document.getElementById(id);
+			if (!el || !labels.length) return;
+			var todosZero = values.every(function (value) { return Number(value) === 0; });
+			new Chart(el, {
 				type: "line",
 				data: {
-					labels: graficos.graficoTemp.labels,
-					datasets: [
-						{ label: "Temp C", data: graficos.graficoTemp.temp, borderColor: "#f87171", tension: 0.35 },
-						{ label: "Umidade %", data: graficos.graficoTemp.umidade, borderColor: "#a78bfa", tension: 0.35 }
-					]
+					labels: labels,
+					datasets: [{
+						label: label,
+						data: values,
+						borderColor: cor,
+						backgroundColor: cor + "33",
+						fill: true,
+						tension: 0.35,
+						borderWidth: 2,
+						pointRadius: labels.length > 100 ? 1.5 : 3,
+						pointHoverRadius: 5,
+						pointBackgroundColor: cor,
+						clip: false
+					}]
 				},
 				options: {
 					responsive: true,
 					maintainAspectRatio: false,
 					plugins: { legend: { labels: { color: "#94a3b8" } } },
 					scales: {
-						x: { ticks: { color: "#64748b" }, grid: { color: "#334155" } },
-						y: { ticks: { color: "#64748b" }, grid: { color: "#334155" } }
+						x: {
+							ticks: { color: "#64748b", autoSkip: true, maxTicksLimit: 12 },
+							grid: { color: "#334155" }
+						},
+						y: {
+							beginAtZero: true,
+							suggestedMax: todosZero ? 1 : undefined,
+							grace: "10%",
+							ticks: { color: "#64748b" },
+							grid: { color: "#334155" }
+						}
 					}
 				}
 			});
 		}
+
+		if (graficos.graficoOdor) {
+			criarLinha("chart-odor", "H2S", graficos.graficoOdor.labels, graficos.graficoOdor.values, "#22d3ee");
+		}
+		if (graficos.graficoNivel) {
+			criarLinha("chart-nivel", "Nivel %", graficos.graficoNivel.labels, graficos.graficoNivel.values, "#4ade80");
+		}
+		if (graficos.graficoPressao) {
+			criarLinha("chart-pressao", "Pressao", graficos.graficoPressao.labels, graficos.graficoPressao.values, "#fbbf24");
+		}
+		if (graficos.graficoTemp && graficos.graficoTemp.labels.length) {
+			var elTemp = document.getElementById("chart-temp");
+			if (elTemp) {
+				new Chart(elTemp, {
+					type: "line",
+					data: {
+						labels: graficos.graficoTemp.labels,
+						datasets: [
+							{
+								label: "Temp C",
+								data: graficos.graficoTemp.temp,
+								borderColor: "#f87171",
+								tension: 0.35,
+								borderWidth: 2,
+								pointRadius: graficos.graficoTemp.labels.length > 100 ? 1.5 : 3
+							},
+							{
+								label: "Umidade %",
+								data: graficos.graficoTemp.umidade,
+								borderColor: "#a78bfa",
+								tension: 0.35,
+								borderWidth: 2,
+								pointRadius: graficos.graficoTemp.labels.length > 100 ? 1.5 : 3
+							}
+						]
+					},
+					options: {
+						responsive: true,
+						maintainAspectRatio: false,
+						plugins: { legend: { labels: { color: "#94a3b8" } } },
+						scales: {
+							x: {
+								ticks: { color: "#64748b", autoSkip: true, maxTicksLimit: 12 },
+								grid: { color: "#334155" }
+							},
+							y: { ticks: { color: "#64748b" }, grid: { color: "#334155" } }
+						}
+					}
+				});
+			}
+		}
+	}
+
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", iniciarGraficos);
+	} else {
+		iniciarGraficos();
 	}
 })();
 </script>
